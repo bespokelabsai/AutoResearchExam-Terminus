@@ -187,6 +187,29 @@ async def test_plugin_rejects_short_explicit_modal_lifetime(
     assert plugin.is_installed is False
 
 
+def test_modal_lifetime_is_capped_at_the_provider_maximum() -> None:
+    environment = SimpleNamespace(kwargs={})
+    plugin = TimedWindowPlugin(max_iterations=96, max_duration_seconds=28_800)
+
+    plugin._configure_modal_lifetime(
+        [environment],
+        required_lifetime=432_000,
+    )
+
+    assert environment.kwargs["sandbox_timeout_secs"] == 86_400
+
+
+def test_modal_rejects_an_agent_budget_longer_than_one_sandbox() -> None:
+    environment = SimpleNamespace(kwargs={})
+    plugin = TimedWindowPlugin(max_iterations=1, max_duration_seconds=86_401)
+
+    with pytest.raises(ValueError, match="agent time.*86400"):
+        plugin._configure_modal_lifetime(
+            [environment],
+            required_lifetime=86_401,
+        )
+
+
 @pytest.mark.asyncio
 async def test_modal_lifetime_uses_the_effective_verifier_timeout(
     tmp_path: Path,

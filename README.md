@@ -33,6 +33,9 @@ harbor run --repo bespokelabsai/AutoResearchExam -p . \
 
 Choose `-e modal` for Modal execution.
 
+Modal limits one persistent sandbox to 24 hours. The plugin rejects a longer agent-time
+budget and caps its derived wall-clock lifetime at that provider limit.
+
 ## Run settings
 
 You can set these values for each run:

@@ -22,6 +22,7 @@ from .config import TimedWindowConfig, validate_backend
 
 _AGENT_IMPORT_PATH = "harbor_autoresearch.agent:TimedWindowAgent"
 _MODAL_STORAGE_LIMIT_MB = 512 * 1024
+_MODAL_MAX_SANDBOX_TIMEOUT_SECONDS = 24 * 60 * 60
 # Each experiment has two verifier executions. Their configured timeouts are
 # counted separately, plus ten minutes for artifact collection and archiving.
 _ARTIFACT_ALLOWANCE_SECONDS = 10 * 60
@@ -234,10 +235,18 @@ class TimedWindowPlugin:
         *,
         required_lifetime: int,
     ) -> None:
+        if self.max_duration_seconds > _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS:
+            raise ValueError(
+                "Modal agent time cannot exceed its 86400-second sandbox limit"
+            )
+        supported_lifetime = min(
+            required_lifetime,
+            _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS,
+        )
         for environment in environments:
             configured = environment.kwargs.get("sandbox_timeout_secs")
             if configured is None:
-                environment.kwargs["sandbox_timeout_secs"] = required_lifetime
+                environment.kwargs["sandbox_timeout_secs"] = supported_lifetime
                 continue
             if (
                 isinstance(configured, bool)
@@ -245,10 +254,14 @@ class TimedWindowPlugin:
                 or not math.isfinite(configured)
             ):
                 raise ValueError("Modal sandbox_timeout_secs must be a finite number")
-            if configured < required_lifetime:
+            if configured > _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS:
+                raise ValueError(
+                    "Modal sandbox_timeout_secs cannot exceed 86400 seconds"
+                )
+            if configured < supported_lifetime:
                 raise ValueError(
                     "Modal sandbox_timeout_secs must be at least "
-                    f"{required_lifetime} seconds"
+                    f"{supported_lifetime} seconds"
                 )
 
     @staticmethod
