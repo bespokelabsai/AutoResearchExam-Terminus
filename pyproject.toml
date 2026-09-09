@@ -1,0 +1,44 @@
+[project]
+name = "harbor-autoresearch"
+version = "0.1.0"
+description = "Timed multi-iteration research runs for Harbor tasks"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "harbor>=0.22.0,<0.23.0",
+]
+
+[project.optional-dependencies]
+modal = ["harbor[modal]>=0.22.0,<0.23.0"]
+dev = [
+    "pytest>=8.4",
+    "pytest-asyncio>=1.2",
+    "ruff>=0.15",
+    "ty>=0.0.49",
+]
+
+[project.entry-points."harbor.plugins"]
+autoresearch-timed = "harbor_autoresearch.plugin:TimedWindowPlugin"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harbor_autoresearch"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = ["-q", "--strict-markers", "--strict-config"]
+markers = ["docker: requires a working local Docker daemon"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ty.src]
+include = ["src", "tests"]
