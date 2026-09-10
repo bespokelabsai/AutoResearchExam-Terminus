@@ -598,8 +598,10 @@ class TimedWindowTrial(SingleStepTrial):
             manifest_path.write_text(json.dumps(entries, indent=2))
 
     async def _initialize_workspace(self) -> bool:
+        agent_user = self.task.config.agent.user
         init = await self.agent_environment.exec(
-            "git rev-parse --git-dir >/dev/null 2>&1 || git init"
+            "git rev-parse --git-dir >/dev/null 2>&1 || git init",
+            user=agent_user,
         )
         has_git = init.return_code == 0
         if init.return_code != 0:
@@ -609,7 +611,8 @@ class TimedWindowTrial(SingleStepTrial):
         results = await self.agent_environment.exec(
             "test -e results.tsv || "
             "printf 'iteration\\tvisible_score\\tstatus\\tdescription\\n' "
-            "> results.tsv"
+            "> results.tsv",
+            user=agent_user,
         )
         if results.return_code != 0:
             self.logger.warning("Could not initialize results.tsv")

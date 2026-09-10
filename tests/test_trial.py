@@ -44,7 +44,7 @@ class _Agent:
 
 
 class _Environment:
-    async def exec(self, command: str) -> ExecResult:
+    async def exec(self, command: str, **_: object) -> ExecResult:
         return ExecResult(return_code=0, stdout="", stderr="")
 
 
@@ -477,6 +477,31 @@ def test_protocol_describes_snapshot_fallback_when_git_is_unavailable() -> None:
     assert "Git is unavailable" in protocol
     assert "snapshots the declared artifacts" in protocol
     assert "starts as a Git repository" not in protocol
+
+
+@pytest.mark.asyncio
+async def test_workspace_initialization_runs_as_the_task_agent_user() -> None:
+    users: list[str | int | None] = []
+
+    class RecordingEnvironment:
+        async def exec(
+            self,
+            command: str,
+            *,
+            user: str | int | None = None,
+        ) -> ExecResult:
+            users.append(user)
+            return ExecResult(return_code=0, stdout="", stderr="")
+
+    trial = object.__new__(TimedWindowTrial)
+    trial.task = SimpleNamespace(
+        config=SimpleNamespace(agent=SimpleNamespace(user="agent"))
+    )
+    trial.agent_environment = RecordingEnvironment()
+    trial.logger = logging.getLogger("test-workspace-owner")
+
+    assert await trial._initialize_workspace() is True
+    assert users == ["agent", "agent"]
 
 
 @pytest.mark.asyncio
