@@ -34,10 +34,10 @@ class _Agent:
         self.remaining_turns = 10
         self.budget_tripped = False
         self.can_continue_autoresearch = True
-        self.windows: list[float] = []
+        self.iteration_starts = 0
 
-    def begin_timed_iteration(self, *, effective_max_seconds: float) -> None:
-        self.windows.append(effective_max_seconds)
+    def begin_timed_iteration(self) -> None:
+        self.iteration_starts += 1
 
     def latest_submission_summary(self) -> str:
         return "hypothesis: improve it"
@@ -79,28 +79,34 @@ async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hid
     trial.timed_window_config = TimedWindowConfig(
         max_iterations=2,
         max_duration_seconds=120,
-        min_time_per_iteration=1,
-        max_time_per_iteration=1,
+        min_time_per_iteration=0,
     )
     trial._are_agent_logs_downloaded = False
 
     instructions: list[str] = []
+    timeouts: list[float] = []
+    clock = [0.0]
     stopped = False
+    monkeypatch.setattr("harbor_autoresearch.trial._monotonic", lambda: clock[0])
 
     async def run_agent(
         self: TimedWindowTrial,
         step_result: object,
         *,
         instruction: str,
+        timeout_sec: float,
         **_: object,
     ) -> AgentPhaseOutcome:
         instructions.append(instruction)
+        timeouts.append(timeout_sec)
         self.agent.remaining_turns -= 1
-        return AgentPhaseOutcome(1.0, AgentPhaseStatus.COMPLETED)
+        clock[0] += 10
+        return AgentPhaseOutcome(10.0, AgentPhaseStatus.COMPLETED)
 
     async def collect(
         self: TimedWindowTrial, *, artifacts_dir: Path, **_: object
     ) -> None:
+        clock[0] += 5
         (artifacts_dir / "submission.txt").write_text(f"submission-{len(instructions)}")
 
     async def grade(
@@ -111,12 +117,14 @@ async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hid
         **_: object,
     ) -> GraderRecord:
         if grader_name == "intermediate":
+            clock[0] += 2
             return GraderRecord(
                 score=0.8,
                 rewards={"reward": 0.8},
                 stdout=f"visible-{iteration}",
             )
         private_scores = {1: 0.2, 2: 0.9}
+        clock[0] += 3
         return GraderRecord(
             score=private_scores[iteration],
             rewards={"reward": private_scores[iteration]},
@@ -139,9 +147,23 @@ async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hid
     await asyncio.wait_for(trial._run(), timeout=10)
 
     assert trial.result.verifier_result == VerifierResult(rewards={"reward": 0.2})
+    assert "phase: 1" in instructions[0]
+    assert "total autoresearch budget: 120.0 seconds" in instructions[0]
+    assert (
+        "wall-clock time remaining before this phase: 120.0 seconds" in instructions[0]
+    )
+    assert "previous iteration wall-clock: 0.0 seconds" in instructions[0]
     assert "visible-1" in instructions[1]
+    assert (
+        "wall-clock time remaining before this phase: 100.0 seconds" in instructions[1]
+    )
+    assert "previous iteration wall-clock: 20.0 seconds" in instructions[1]
+    assert "previous agent effort: 10.0 seconds" in instructions[1]
+    assert "previous non-agent processing: 5.0 seconds" in instructions[1]
+    assert "previous validation grading: 5.0 seconds" in instructions[1]
     assert "private-1" not in "\n".join(instructions)
-    assert trial.agent.windows == [60, 60]
+    assert timeouts == [120, 100]
+    assert trial.agent.iteration_starts == 2
     assert stopped is True
     public_text = trial._progress.public_path.read_text()
     private_text = trial._progress.private_path.read_text()
@@ -151,10 +173,105 @@ async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hid
     assert summary["selected_iteration"] == 1
     assert summary["selected_test_score"] == 0.2
     assert summary["configuration"]["model"] == "provider/model"
+    assert summary["scores"][0]["submitted_at"]
+    assert summary["scores"][0]["wall_elapsed_seconds"] == 20
+    assert summary["scores"][0]["wall_clock_remaining_seconds"] == 100
+    assert summary["scores"][0]["agent_effort_seconds"] == 10
+    assert summary["scores"][0]["evaluation_seconds"] == 5
     assert not (trial_dir / "autoresearch/iterations/0001/artifacts").exists()
     first_public = json.loads(public_text.splitlines()[0])
     assert first_public["public_best_at_record_time"] is True
+    assert first_public["submitted_at"]
+    assert first_public["wall_clock_budget_seconds"] == 120
+    assert first_public["wall_clock_remaining_seconds"] == 100
+    assert first_public["agent_effort_seconds"] == 10
+    assert first_public["evaluation_seconds"] == 5
+    assert first_public["min_time_per_iteration"] == 0
     assert "selected" not in first_public
+
+
+@pytest.mark.asyncio
+async def test_global_deadline_forces_one_submission_and_starts_no_later_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trial = object.__new__(TimedWindowTrial)
+    trial.paths = TrialPaths(tmp_path / "trial")
+    trial.paths.mkdir()
+    trial._id = uuid4()
+    trial.config = SimpleNamespace(
+        trial_name="attempt-1",
+        agent=SimpleNamespace(model_name="provider/model"),
+        environment=SimpleNamespace(type=EnvironmentType.DOCKER),
+    )
+    trial.task = SimpleNamespace(
+        instruction="Improve it.",
+        config=SimpleNamespace(
+            agent=SimpleNamespace(user=None),
+            verifier=SimpleNamespace(user=None),
+        ),
+    )
+    trial.agent = _Agent()
+    trial.agent_environment = _Environment()
+    trial.logger = logging.getLogger("test-timed-window-deadline")
+    trial._result = SimpleNamespace(step_results=None, verifier_result=None)
+    trial._progress = ProgressStore(trial.paths.trial_dir / "autoresearch")
+    trial.timed_window_config = TimedWindowConfig(2, 60, 0)
+    trial._are_agent_logs_downloaded = False
+    clock = [0.0]
+    instructions: list[str] = []
+    graders: list[str] = []
+    monkeypatch.setattr("harbor_autoresearch.trial._monotonic", lambda: clock[0])
+
+    async def run_agent(
+        self: TimedWindowTrial,
+        step_result: object,
+        *,
+        instruction: str,
+        **_: object,
+    ) -> AgentPhaseOutcome:
+        instructions.append(instruction)
+        clock[0] = 60.0
+        return AgentPhaseOutcome(60.0, AgentPhaseStatus.GLOBAL_TIMEOUT)
+
+    async def collect(
+        self: TimedWindowTrial, *, artifacts_dir: Path, **_: object
+    ) -> None:
+        clock[0] += 10
+        (artifacts_dir / "submission.txt").write_text("submitted")
+
+    async def seal(
+        self: TimedWindowTrial, iteration_dir: Path, artifacts_dir: Path
+    ) -> tuple[Path, str]:
+        return iteration_dir / "artifact.tar.gz", "digest"
+
+    async def grade(
+        self: TimedWindowTrial, *, grader_name: str, **_: object
+    ) -> GraderRecord:
+        graders.append(grader_name)
+        clock[0] += 10
+        score = 0.8 if grader_name == "intermediate" else 0.4
+        return GraderRecord(score=score, rewards={"reward": score})
+
+    async def no_op(*_: object, **__: object) -> None:
+        return None
+
+    monkeypatch.setattr(TimedWindowTrial, "_run_agent_iteration", run_agent)
+    monkeypatch.setattr(TimedWindowTrial, "_collect_artifacts_phased", collect)
+    monkeypatch.setattr(TimedWindowTrial, "_seal_artifacts", seal)
+    monkeypatch.setattr(TimedWindowTrial, "_run_named_grader", grade)
+    monkeypatch.setattr(TimedWindowTrial, "_upload_agent_logs", no_op)
+    monkeypatch.setattr(TimedWindowTrial, "_stop_agent_environment", no_op)
+
+    await trial._run()
+
+    assert len(instructions) == 1
+    assert graders == ["intermediate", "test"]
+    assert len(trial.result.step_results) == 1
+    assert trial.result.step_results[0].exception_info is None
+    summary = json.loads(trial._progress.summary_path.read_text())
+    assert summary["stop_reason"] == "max_autoresearch_duration_seconds"
+    assert summary["wall_elapsed_seconds"] == 90
 
 
 def test_staged_intermediate_grader_keeps_dockerfile_inputs_without_private_script(
@@ -377,7 +494,7 @@ async def test_recovery_writes_summary_for_completed_iterations(
         agent=SimpleNamespace(model_name="provider/model"),
         environment=SimpleNamespace(type=EnvironmentType.DOCKER),
     )
-    trial.timed_window_config = TimedWindowConfig(2, 120, 1, 1)
+    trial.timed_window_config = TimedWindowConfig(2, 120, 0)
     trial._progress = ProgressStore(trial_dir / "autoresearch")
     trial._run_state = _RunState(
         wall_started=0,

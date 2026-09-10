@@ -58,15 +58,15 @@ class _OutputTokenMeter:
         return max(len(truncated), 1)
 
 
-def _positive_integer(value: Any, name: str) -> int:
+def _nonnegative_integer(value: Any, name: str) -> int:
     if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
         raise ValueError(f"{name} must be an integer number of minutes")
     try:
         result = int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{name} must be an integer number of minutes") from exc
-    if result <= 0:
-        raise ValueError(f"{name} must be positive")
+    if result < 0:
+        raise ValueError(f"{name} cannot be negative")
     return result
 
 
@@ -104,18 +104,12 @@ class TimedWindowAgent(Terminus2):
     def __init__(
         self,
         *args: Any,
-        min_time_per_iteration: int,
-        max_time_per_iteration: int,
+        min_time_per_iteration: int = 0,
         output_token_budget: int | None = None,
         auto_summarization: bool | str = DEFAULT_AUTO_SUMMARIZATION,
         **kwargs: Any,
     ) -> None:
-        minimum = _positive_integer(min_time_per_iteration, "min_time_per_iteration")
-        maximum = _positive_integer(max_time_per_iteration, "max_time_per_iteration")
-        if maximum < minimum:
-            raise ValueError(
-                "max_time_per_iteration cannot be below min_time_per_iteration"
-            )
+        minimum = _nonnegative_integer(min_time_per_iteration, "min_time_per_iteration")
 
         self.auto_summarization = _boolean(auto_summarization, "auto_summarization")
         self._output_token_budget = _optional_positive_integer(
@@ -130,15 +124,12 @@ class TimedWindowAgent(Terminus2):
             self._llm = self._output_meter
 
         self.min_time_per_iteration = minimum
-        self.max_time_per_iteration = maximum
         self._global_max_turns = self._max_episodes
         self._total_turns_used = 0
         self._current_iteration_turn_limit = self._global_max_turns
         self._original_instruction: str | None = None
         self._iteration_started_monotonic: float | None = None
-        self._effective_iteration_max_seconds: float | None = None
         self._latest_agent_effort_seconds = 0.0
-        self._sent_time_reminders: set[float] = set()
         self._iteration_trajectory_start_index = 0
         self._budget_tripped = False
         self._stop_requested = False
@@ -152,9 +143,7 @@ class TimedWindowAgent(Terminus2):
         """Start the persistent session and charge turns to the shared limit."""
         self._original_instruction = instruction
         if self._iteration_started_monotonic is None:
-            self.begin_timed_iteration(
-                effective_max_seconds=self.max_time_per_iteration * 60
-            )
+            self.begin_timed_iteration()
         # Harbor invokes the agent only after its phase-start hooks complete.
         # Reset here so queue or hook wait never consumes the experiment window.
         self._iteration_started_monotonic = time.monotonic()
@@ -191,9 +180,7 @@ class TimedWindowAgent(Terminus2):
         if self.remaining_turns <= 0:
             raise RuntimeError("TimedWindowAgent has exhausted max_turns")
         if self._iteration_started_monotonic is None:
-            self.begin_timed_iteration(
-                effective_max_seconds=self.max_time_per_iteration * 60
-            )
+            self.begin_timed_iteration()
         self._iteration_started_monotonic = time.monotonic()
 
         chat = self._chat
@@ -321,15 +308,10 @@ class TimedWindowAgent(Terminus2):
             return False
         return self._meter_output_tokens >= self._output_token_budget
 
-    def begin_timed_iteration(self, *, effective_max_seconds: float) -> None:
-        """Start the agent-facing clock for one experiment."""
-        maximum = float(effective_max_seconds)
-        if not math.isfinite(maximum) or maximum <= 0:
-            raise ValueError("effective_max_seconds must be positive and finite")
+    def begin_timed_iteration(self) -> None:
+        """Start the minimum-effort clock for one experiment."""
         self._iteration_started_monotonic = time.monotonic()
-        self._effective_iteration_max_seconds = maximum
         self._latest_agent_effort_seconds = 0.0
-        self._sent_time_reminders = set()
         self._iteration_trajectory_start_index = len(self._trajectory_steps)
 
     @property
@@ -343,46 +325,11 @@ class TimedWindowAgent(Terminus2):
         """Monotonic effort used by the agent call, excluding Harbor hooks."""
         return self._latest_agent_effort_seconds
 
-    def _time_reminder(self) -> str | None:
-        maximum = self._effective_iteration_max_seconds
-        if maximum is None:
-            return None
-        remaining = max(maximum - self.elapsed_iteration_seconds, 0.0)
-        crossed = [
-            fraction
-            for fraction in (0.1, 0.2, 0.5)
-            if remaining <= maximum * fraction
-            and fraction not in self._sent_time_reminders
-        ]
-        if not crossed:
-            return None
-
-        self._sent_time_reminders.update(crossed)
-        messages = []
-        for fraction in sorted(crossed, reverse=True):
-            threshold_minutes = max(math.ceil(maximum * fraction / 60), 1)
-            unit = "minute" if threshold_minutes == 1 else "minutes"
-            messages.append(
-                f"Time reminder: the {threshold_minutes} {unit} remaining mark "
-                "has been reached."
-            )
-        return "\n".join(messages)
-
     async def _handle_llm_interaction(
         self, chat: Any, *args: Any, **kwargs: Any
     ) -> tuple[Any, ...]:
         if self._stop_requested:
             raise _SharedBudgetStop
-
-        reminder = self._time_reminder()
-        if reminder:
-            if args:
-                args = (f"{args[0]}\n\n{reminder}", *args[1:])
-            elif "prompt" in kwargs:
-                kwargs = {
-                    **kwargs,
-                    "prompt": f"{kwargs['prompt']}\n\n{reminder}",
-                }
 
         result = await super()._handle_llm_interaction(chat, *args, **kwargs)
         if self._output_budget_exhausted():

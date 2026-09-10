@@ -6,6 +6,7 @@ from harbor_autoresearch.protocol import (
     AUTORESEARCH_PROTOCOL,
     extract_submission_summary,
     format_iteration_feedback,
+    format_phase_instruction,
 )
 
 
@@ -30,6 +31,30 @@ def test_feedback_contains_only_bounded_intermediate_information() -> None:
     assert "error: none" in feedback
     assert "useful output" in feedback
     assert "discard-this" not in feedback
+
+
+def test_phase_instruction_reports_global_budget_and_previous_timing() -> None:
+    instruction = format_phase_instruction(
+        instruction="Visible intermediate score: 0.42",
+        phase=3,
+        total_budget_seconds=21_600,
+        remaining_seconds=20_123.456,
+        previous_iteration_seconds=321.25,
+        previous_agent_effort_seconds=250.5,
+        previous_non_agent_seconds=50.25,
+        previous_validation_seconds=20.5,
+    )
+
+    assert "Visible intermediate score: 0.42" in instruction
+    assert "phase: 3" in instruction
+    assert "total autoresearch budget: 21600.0 seconds" in instruction
+    assert "wall-clock time remaining before this phase: 20123.5 seconds" in instruction
+    assert "previous iteration wall-clock: 321.2 seconds" in instruction
+    assert "previous agent effort: 250.5 seconds" in instruction
+    assert "previous non-agent processing: 50.2 seconds" in instruction
+    assert "previous validation grading: 20.5 seconds" in instruction
+    assert "Only visible validation score/output is available to you." in instruction
+    assert "PRIVATE-SENTINEL" not in instruction
 
 
 def test_summary_prefers_latest_marked_submission_over_confirmation() -> None:

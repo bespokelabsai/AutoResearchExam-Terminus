@@ -23,8 +23,8 @@ from .config import TimedWindowConfig, validate_backend
 _AGENT_IMPORT_PATH = "harbor_autoresearch.agent:TimedWindowAgent"
 _MODAL_STORAGE_LIMIT_MB = 512 * 1024
 _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS = 24 * 60 * 60
-# Each experiment has two verifier executions. Their configured timeouts are
-# counted separately, plus ten minutes for artifact collection and archiving.
+# The final accepted submission can outlive the research deadline while its two
+# verifiers finish. Reserve both timeouts plus artifact collection and archiving.
 _ARTIFACT_ALLOWANCE_SECONDS = 10 * 60
 # Static preflight reserves a small host allowance per retained iteration. The
 # actual artifact size is unknowable before execution, so the trial remains
@@ -42,14 +42,18 @@ class TimedWindowPlugin:
         max_iterations: int,
         max_duration_seconds: int,
         min_time_per_iteration: int | None = None,
-        max_time_per_iteration: int | None = None,
+        max_time_per_iteration: Any = None,
         auto_summarize: bool | None = None,
         **_: Any,
     ) -> None:
+        if max_time_per_iteration is not None:
+            raise ValueError(
+                "A per-iteration maximum is not supported; the global wall-clock "
+                "deadline bounds every agent phase"
+            )
         self.max_iterations = max_iterations
         self.max_duration_seconds = max_duration_seconds
         self.min_time_per_iteration = min_time_per_iteration
-        self.max_time_per_iteration = max_time_per_iteration
         self.auto_summarize = auto_summarize
         self._original_create: Any = None
         self._installed_create: Any = None
@@ -182,15 +186,12 @@ class TimedWindowPlugin:
     def _window_config(self, trial_config: Any) -> TimedWindowConfig:
         kwargs = trial_config.agent.kwargs
         minimum = self.min_time_per_iteration
-        maximum = self.max_time_per_iteration
         if minimum is None:
-            minimum = kwargs.get("min_time_per_iteration")
-        if maximum is None:
-            maximum = kwargs.get("max_time_per_iteration")
-        if minimum is None or maximum is None:
+            minimum = kwargs.get("min_time_per_iteration", 0)
+        if kwargs.get("max_time_per_iteration") is not None:
             raise ValueError(
-                "Specify min_time_per_iteration and max_time_per_iteration "
-                "as agent or plugin kwargs"
+                "A per-iteration maximum is not supported; remove "
+                "max_time_per_iteration from agent kwargs"
             )
         auto_summarize = self.auto_summarize
         if auto_summarize is None:
@@ -201,7 +202,6 @@ class TimedWindowPlugin:
             max_iterations=self.max_iterations,
             max_duration_seconds=self.max_duration_seconds,
             min_time_per_iteration=minimum,
-            max_time_per_iteration=maximum,
             auto_summarize=auto_summarize,
         )
 
@@ -209,7 +209,6 @@ class TimedWindowPlugin:
         kwargs = trial_config.agent.kwargs
         overrides = {
             "min_time_per_iteration": self.min_time_per_iteration,
-            "max_time_per_iteration": self.max_time_per_iteration,
             "auto_summarization": self.auto_summarize,
         }
         for name, value in overrides.items():
@@ -237,12 +236,14 @@ class TimedWindowPlugin:
     ) -> None:
         if self.max_duration_seconds > _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS:
             raise ValueError(
-                "Modal agent time cannot exceed its 86400-second sandbox limit"
+                "Modal wall-clock budget cannot exceed its 86400-second sandbox limit"
             )
-        supported_lifetime = min(
-            required_lifetime,
-            _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS,
-        )
+        if required_lifetime > _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS:
+            raise ValueError(
+                "The required Modal sandbox lifetime exceeds 86400 seconds; "
+                "reduce the wall-clock budget or verifier timeout"
+            )
+        supported_lifetime = required_lifetime
         for environment in environments:
             configured = environment.kwargs.get("sandbox_timeout_secs")
             if configured is None:
@@ -285,10 +286,8 @@ class TimedWindowPlugin:
             )
             * multiplier
         )
-        per_iteration = 2 * verifier_timeout + _ARTIFACT_ALLOWANCE_SECONDS
-        return math.ceil(
-            window.max_duration_seconds + window.max_iterations * per_iteration
-        )
+        finalization_allowance = 2 * verifier_timeout + _ARTIFACT_ALLOWANCE_SECONDS
+        return math.ceil(window.max_duration_seconds + finalization_allowance)
 
     @staticmethod
     def _validate_trial_config(config: Any) -> None:
@@ -359,12 +358,15 @@ class TimedWindowPlugin:
             if backend == "docker":
                 # A task environment exists once, not once per iteration.
                 required_mb += cls._task_storage_mb(task)
-            possible_iterations = min(
-                window.max_iterations,
-                math.ceil(
-                    window.max_duration_seconds / (window.min_time_per_iteration * 60)
-                ),
-            )
+            possible_iterations = window.max_iterations
+            if window.min_time_per_iteration > 0:
+                possible_iterations = min(
+                    possible_iterations,
+                    math.ceil(
+                        window.max_duration_seconds
+                        / (window.min_time_per_iteration * 60)
+                    ),
+                )
             required_mb += possible_iterations * _RETAINED_ITERATION_ALLOWANCE_MB
 
         existing = job_dir

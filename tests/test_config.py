@@ -7,14 +7,12 @@ def test_accepts_user_selected_timing_at_supported_boundaries() -> None:
     config = TimedWindowConfig(
         max_iterations=500,
         max_duration_seconds=172_800,
-        min_time_per_iteration=1,
-        max_time_per_iteration=2_880,
+        min_time_per_iteration=0,
     )
 
     assert config.max_iterations == 500
     assert config.max_duration_seconds == 172_800
-    assert config.min_time_per_iteration == 1
-    assert config.max_time_per_iteration == 2_880
+    assert config.min_time_per_iteration == 0
     assert config.auto_summarize is True
 
 
@@ -25,8 +23,7 @@ def test_accepts_user_selected_timing_at_supported_boundaries() -> None:
         ("max_iterations", 501),
         ("max_duration_seconds", 0),
         ("max_duration_seconds", 172_801),
-        ("min_time_per_iteration", 0),
-        ("max_time_per_iteration", 0),
+        ("min_time_per_iteration", -1),
     ],
 )
 def test_rejects_timing_outside_supported_ranges(field: str, value: int) -> None:
@@ -34,7 +31,6 @@ def test_rejects_timing_outside_supported_ranges(field: str, value: int) -> None
         "max_iterations": 4,
         "max_duration_seconds": 600,
         "min_time_per_iteration": 1,
-        "max_time_per_iteration": 5,
     }
     values[field] = value
 
@@ -49,31 +45,26 @@ def test_timing_values_are_integers_not_coercions(value: object) -> None:
             max_iterations=value,
             max_duration_seconds=600,
             min_time_per_iteration=1,
-            max_time_per_iteration=5,
         )
 
 
-def test_iteration_window_must_fit_in_order_and_in_global_budget() -> None:
+def test_iteration_minimum_must_fit_in_global_budget() -> None:
     with pytest.raises(ValueError, match="min_time_per_iteration"):
-        TimedWindowConfig(4, 600, 6, 5)
-
-    with pytest.raises(ValueError, match="max_time_per_iteration"):
-        TimedWindowConfig(4, 299, 1, 5)
+        TimedWindowConfig(4, 299, 5)
 
 
 def test_serializes_the_exact_validated_user_configuration() -> None:
-    config = TimedWindowConfig(4, 600, 1, 5, auto_summarize=False)
+    config = TimedWindowConfig(4, 600, 0, auto_summarize=False)
 
     assert config.as_dict() == {
         "max_iterations": 4,
         "max_duration_seconds": 600,
-        "min_time_per_iteration": 1,
-        "max_time_per_iteration": 5,
+        "min_time_per_iteration": 0,
         "auto_summarize": False,
     }
 
     with pytest.raises(TypeError, match="auto_summarize"):
-        TimedWindowConfig(4, 600, 1, 5, auto_summarize=1)
+        TimedWindowConfig(4, 600, 0, auto_summarize=1)
 
 
 def test_backend_allowlist_accepts_only_local_docker_and_modal() -> None:

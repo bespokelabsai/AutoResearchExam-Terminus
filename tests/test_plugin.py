@@ -46,8 +46,7 @@ def _valid_job(
             name="harbor_autoresearch.agent:TimedWindowAgent",
             model_name="provider/model",
             kwargs={
-                "min_time_per_iteration": 1,
-                "max_time_per_iteration": 1,
+                "min_time_per_iteration": 0,
             },
         ),
         environment=EnvironmentConfig(type=backend),
@@ -75,6 +74,29 @@ def _valid_job(
         job_dir=tmp_path / "job",
         run=run,
     )
+
+
+def test_plugin_defaults_iteration_minimum_to_zero() -> None:
+    trial_config = SimpleNamespace(
+        agent=SimpleNamespace(
+            kwargs={"auto_summarization": False},
+        )
+    )
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
+
+    window = plugin._window_config(trial_config)
+
+    assert window.min_time_per_iteration == 0
+    assert window.auto_summarize is False
+
+
+def test_plugin_rejects_a_per_iteration_maximum() -> None:
+    with pytest.raises(ValueError, match="per-iteration maximum is not supported"):
+        TimedWindowPlugin(
+            max_iterations=2,
+            max_duration_seconds=120,
+            max_time_per_iteration=1,
+        )
 
 
 @pytest.mark.asyncio
@@ -165,9 +187,9 @@ async def test_plugin_extends_modal_lifetime_on_job_and_derived_trials(
 
     await plugin.on_job_start(job)
 
-    # 120s agent budget + two iterations of two 600s verifiers and a 600s
-    # artifact allowance.
-    expected = 120 + 2 * (2 * 600 + 600)
+    # The global budget includes completed iterations. Only the final accepted
+    # submission can overrun it while collecting artifacts and grading twice.
+    expected = 120 + 2 * 600 + 600
     assert job.config.environment.kwargs["sandbox_timeout_secs"] == expected
     assert job._trial_configs[0].environment.kwargs["sandbox_timeout_secs"] == expected
     await plugin.on_job_end(object())
@@ -178,32 +200,33 @@ async def test_plugin_rejects_short_explicit_modal_lifetime(
     tmp_path: Path,
 ) -> None:
     job = _valid_job(tmp_path, backend=EnvironmentType.MODAL)
-    job.config.environment.kwargs["sandbox_timeout_secs"] = 3_719
+    job.config.environment.kwargs["sandbox_timeout_secs"] = 1_919
     plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
 
-    with pytest.raises(ValueError, match="at least 3720"):
+    with pytest.raises(ValueError, match="at least 1920"):
         await plugin.on_job_start(job)
 
     assert plugin.is_installed is False
 
 
-def test_modal_lifetime_is_capped_at_the_provider_maximum() -> None:
+def test_modal_rejects_when_finalization_would_exceed_provider_maximum() -> None:
     environment = SimpleNamespace(kwargs={})
     plugin = TimedWindowPlugin(max_iterations=96, max_duration_seconds=28_800)
 
-    plugin._configure_modal_lifetime(
-        [environment],
-        required_lifetime=432_000,
-    )
+    with pytest.raises(ValueError, match="required Modal sandbox lifetime.*86400"):
+        plugin._configure_modal_lifetime(
+            [environment],
+            required_lifetime=432_000,
+        )
 
-    assert environment.kwargs["sandbox_timeout_secs"] == 86_400
+    assert "sandbox_timeout_secs" not in environment.kwargs
 
 
 def test_modal_rejects_an_agent_budget_longer_than_one_sandbox() -> None:
     environment = SimpleNamespace(kwargs={})
     plugin = TimedWindowPlugin(max_iterations=1, max_duration_seconds=86_401)
 
-    with pytest.raises(ValueError, match="agent time.*86400"):
+    with pytest.raises(ValueError, match="wall-clock budget.*86400"):
         plugin._configure_modal_lifetime(
             [environment],
             required_lifetime=86_401,
@@ -216,11 +239,11 @@ async def test_modal_lifetime_uses_the_effective_verifier_timeout(
 ) -> None:
     job = _valid_job(tmp_path, backend=EnvironmentType.MODAL)
     job._trial_configs[0].verifier.override_timeout_sec = 900
-    # 120 + 2 * (2 * 900 + 600) = 4920.
-    job.config.environment.kwargs["sandbox_timeout_secs"] = 4_919
+    # 120 + two 900s graders + 600s artifact allowance = 2520.
+    job.config.environment.kwargs["sandbox_timeout_secs"] = 2_519
     plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
 
-    with pytest.raises(ValueError, match="at least 4920"):
+    with pytest.raises(ValueError, match="at least 2520"):
         await plugin.on_job_start(job)
 
     assert plugin.is_installed is False
@@ -230,8 +253,8 @@ async def test_modal_lifetime_uses_the_effective_verifier_timeout(
 @pytest.mark.parametrize(
     ("backend", "available_mb", "required_mb"),
     [
-        (EnvironmentType.DOCKER, 427, 428),
-        (EnvironmentType.MODAL, 127, 128),
+        (EnvironmentType.DOCKER, 32_299, 32_300),
+        (EnvironmentType.MODAL, 31_999, 32_000),
     ],
 )
 async def test_storage_preflight_checks_host_space_for_both_backends(
@@ -279,7 +302,7 @@ async def test_modal_host_estimate_does_not_multiply_remote_disk_by_iterations(
         return SimpleNamespace(free=128 * 1024 * 1024)
 
     monkeypatch.setattr("harbor_autoresearch.plugin.shutil.disk_usage", disk_usage)
-    plugin = TimedWindowPlugin(max_iterations=500, max_duration_seconds=120)
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
 
     await plugin.on_job_start(job)
     try:
@@ -320,8 +343,7 @@ async def test_plugin_timing_is_injected_before_factory_builds_the_trial(
     plugin = TimedWindowPlugin(
         max_iterations=2,
         max_duration_seconds=120,
-        min_time_per_iteration=1,
-        max_time_per_iteration=1,
+        min_time_per_iteration=0,
         auto_summarize=False,
     )
     await plugin.on_job_start(job)
@@ -329,12 +351,10 @@ async def test_plugin_timing_is_injected_before_factory_builds_the_trial(
     result = await Trial.create(trial_config)
 
     assert result is created[0]
-    assert result.window.min_time_per_iteration == 1
-    assert result.window.max_time_per_iteration == 1
+    assert result.window.min_time_per_iteration == 0
     assert result.window.auto_summarize is False
     assert trial_config.agent.kwargs == {
-        "min_time_per_iteration": 1,
-        "max_time_per_iteration": 1,
+        "min_time_per_iteration": 0,
         "auto_summarization": False,
     }
     await plugin.on_job_end(object())

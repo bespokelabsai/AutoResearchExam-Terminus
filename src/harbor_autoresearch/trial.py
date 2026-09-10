@@ -34,7 +34,11 @@ from harbor.trial.single_step import SingleStepTrial
 from .agent import TimedWindowAgent
 from .config import TimedWindowConfig
 from .progress import ProgressStore
-from .protocol import AUTORESEARCH_PROTOCOL, format_iteration_feedback
+from .protocol import (
+    AUTORESEARCH_PROTOCOL,
+    format_iteration_feedback,
+    format_phase_instruction,
+)
 from .results import GraderRecord, IterationRecord
 from .scoring import (
     parse_reward,
@@ -46,11 +50,11 @@ from .scoring import (
 _MAX_GRADER_OUTPUT_CHARS = 8_192
 _MAX_GRADER_OUTPUT_BYTES = _MAX_GRADER_OUTPUT_CHARS * 4
 _ARCHIVE_FREE_SPACE_RESERVE_BYTES = 64 * 1024 * 1024
+_monotonic = time.monotonic
 
 
 class AgentPhaseStatus(StrEnum):
     COMPLETED = "completed"
-    LOCAL_TIMEOUT = "local_timeout"
     GLOBAL_TIMEOUT = "global_timeout"
     ERROR = "error"
 
@@ -65,12 +69,16 @@ class AgentPhaseOutcome:
 class _RunState:
     wall_started: float
     agent_elapsed_seconds: float = 0.0
+    previous_agent_effort_seconds: float = 0.0
+    previous_evaluation_seconds: float = 0.0
+    previous_iteration_seconds: float = 0.0
+    previous_non_agent_seconds: float = 0.0
     best_score: float | int | None = None
     selected_iteration: int | None = None
     private_scores: dict[int, float | int | None] = field(default_factory=dict)
     artifact_paths: dict[int, str] = field(default_factory=dict)
     all_scores: list[dict[str, Any]] = field(default_factory=list)
-    stop_reason: str = "max_iterations"
+    stop_reason: str = "max_autoresearch_iterations"
 
 
 class TimedWindowTrial(SingleStepTrial):
@@ -104,8 +112,6 @@ class TimedWindowTrial(SingleStepTrial):
         if (
             self.agent.min_time_per_iteration
             != timed_window_config.min_time_per_iteration
-            or self.agent.max_time_per_iteration
-            != timed_window_config.max_time_per_iteration
         ):
             raise ValueError("Agent and plugin timing settings must match")
 
@@ -120,7 +126,7 @@ class TimedWindowTrial(SingleStepTrial):
         agent = cast(TimedWindowAgent, self.agent)
         workspace_has_git = await self._initialize_workspace()
 
-        state = _RunState(wall_started=time.monotonic())
+        state = _RunState(wall_started=_monotonic())
         self._run_state = state
         next_instruction = (
             f"{self.task.instruction.rstrip()}\n\n"
@@ -128,42 +134,44 @@ class TimedWindowTrial(SingleStepTrial):
         )
 
         for iteration in range(1, self.timed_window_config.max_iterations + 1):
-            remaining = (
-                self.timed_window_config.max_duration_seconds
-                - state.agent_elapsed_seconds
-            )
-            if remaining <= 0:
-                state.stop_reason = "max_duration_seconds"
+            wall_elapsed = max(_monotonic() - state.wall_started, 0.0)
+            if wall_elapsed >= self.timed_window_config.max_duration_seconds:
+                state.stop_reason = "max_autoresearch_duration_seconds"
                 break
+            remaining = max(
+                self.timed_window_config.max_duration_seconds - wall_elapsed,
+                0.001,
+            )
 
             iteration_started = self._now()
             step_result = StepResult(step_name=f"experiment_{iteration:04d}")
             self.result.step_results.append(step_result)
             self._are_agent_logs_downloaded = False
 
-            local_max = self.timed_window_config.max_time_per_iteration * 60
-            effective_max = min(remaining, local_max)
-            timeout_status = (
-                AgentPhaseStatus.GLOBAL_TIMEOUT
-                if remaining <= local_max
-                else AgentPhaseStatus.LOCAL_TIMEOUT
+            phase_started_monotonic = _monotonic()
+            agent.begin_timed_iteration()
+            instruction = format_phase_instruction(
+                instruction=next_instruction,
+                phase=iteration,
+                total_budget_seconds=self.timed_window_config.max_duration_seconds,
+                remaining_seconds=remaining,
+                previous_iteration_seconds=state.previous_iteration_seconds,
+                previous_agent_effort_seconds=state.previous_agent_effort_seconds,
+                previous_non_agent_seconds=state.previous_non_agent_seconds,
+                previous_validation_seconds=state.previous_evaluation_seconds,
             )
             turns_before = agent.remaining_turns
-            agent.begin_timed_iteration(effective_max_seconds=effective_max)
             phase = await self._run_agent_iteration(
                 step_result,
-                instruction=next_instruction,
+                instruction=instruction,
                 resume=iteration > 1,
-                timeout_sec=effective_max,
-                timeout_status=timeout_status,
+                timeout_sec=remaining,
             )
             state.agent_elapsed_seconds += phase.elapsed_seconds
+            submitted_at = self._now()
             await self._upload_agent_logs()
             turns_used = max(turns_before - agent.remaining_turns, 0)
-            expected_timeout = phase.status in {
-                AgentPhaseStatus.LOCAL_TIMEOUT,
-                AgentPhaseStatus.GLOBAL_TIMEOUT,
-            }
+            expected_timeout = phase.status == AgentPhaseStatus.GLOBAL_TIMEOUT
 
             if phase.status == AgentPhaseStatus.ERROR and turns_used == 0:
                 state.stop_reason = "agent_error"
@@ -190,6 +198,7 @@ class TimedWindowTrial(SingleStepTrial):
                 raise
 
             try:
+                evaluation_started_monotonic = _monotonic()
                 intermediate = await self._run_named_grader(
                     iteration=iteration,
                     grader_name="intermediate",
@@ -232,18 +241,35 @@ class TimedWindowTrial(SingleStepTrial):
             finally:
                 await asyncio.to_thread(shutil.rmtree, artifacts_dir)
 
+            evaluation_seconds = max(
+                _monotonic() - evaluation_started_monotonic,
+                0.0,
+            )
             state.private_scores[iteration] = test.score
             state.artifact_paths[iteration] = str(archive_path.resolve())
             iteration_finished = self._now()
-            wall_elapsed = max(time.monotonic() - state.wall_started, 0.0)
+            wall_elapsed = max(_monotonic() - state.wall_started, 0.0)
             record = IterationRecord(
                 attempt_id=self.config.trial_name,
                 trial_id=str(self.id),
                 iteration=iteration,
                 started_at=iteration_started.isoformat(),
+                submitted_at=submitted_at.isoformat(),
                 finished_at=iteration_finished.isoformat(),
                 agent_elapsed_seconds=state.agent_elapsed_seconds,
                 wall_elapsed_seconds=wall_elapsed,
+                wall_clock_budget_seconds=(
+                    self.timed_window_config.max_duration_seconds
+                ),
+                wall_clock_remaining_seconds=max(
+                    self.timed_window_config.max_duration_seconds - wall_elapsed,
+                    0.0,
+                ),
+                agent_effort_seconds=phase.elapsed_seconds,
+                evaluation_seconds=evaluation_seconds,
+                min_time_per_iteration=(
+                    self.timed_window_config.min_time_per_iteration
+                ),
                 turns=turns_used,
                 submission_summary=agent.latest_submission_summary(),
                 intermediate=intermediate,
@@ -256,15 +282,41 @@ class TimedWindowTrial(SingleStepTrial):
             state.all_scores.append(
                 {
                     "iteration": iteration,
+                    "started_at": iteration_started.isoformat(),
+                    "submitted_at": submitted_at.isoformat(),
+                    "finished_at": iteration_finished.isoformat(),
                     "intermediate_score": intermediate.score,
                     "intermediate_raw_metric": intermediate.raw_metric,
                     "test_score": test.score,
                     "test_raw_metric": test.raw_metric,
+                    "wall_elapsed_seconds": wall_elapsed,
+                    "wall_clock_remaining_seconds": max(
+                        self.timed_window_config.max_duration_seconds - wall_elapsed,
+                        0.0,
+                    ),
+                    "agent_effort_seconds": phase.elapsed_seconds,
+                    "evaluation_seconds": evaluation_seconds,
+                    "turns": turns_used,
                     "artifact_path": state.artifact_paths[iteration],
                 }
             )
             self._progress.append_public(record)
             self._progress.append_private(record)
+
+            iteration_finished_monotonic = _monotonic()
+            state.previous_iteration_seconds = max(
+                iteration_finished_monotonic - phase_started_monotonic,
+                0.0,
+            )
+            state.previous_agent_effort_seconds = phase.elapsed_seconds
+            state.previous_evaluation_seconds = evaluation_seconds
+            state.previous_non_agent_seconds = max(
+                state.previous_iteration_seconds
+                - phase.elapsed_seconds
+                - evaluation_seconds,
+                0.0,
+            )
+            wall_elapsed = max(_monotonic() - state.wall_started, 0.0)
 
             if not agent.can_continue_autoresearch:
                 state.stop_reason = (
@@ -272,10 +324,13 @@ class TimedWindowTrial(SingleStepTrial):
                 )
                 break
             if phase.status == AgentPhaseStatus.GLOBAL_TIMEOUT:
-                state.stop_reason = "max_duration_seconds"
+                state.stop_reason = "max_autoresearch_duration_seconds"
                 break
             if phase.status == AgentPhaseStatus.ERROR:
                 state.stop_reason = "agent_error"
+                break
+            if wall_elapsed >= self.timed_window_config.max_duration_seconds:
+                state.stop_reason = "max_autoresearch_duration_seconds"
                 break
 
             next_instruction = format_iteration_feedback(
@@ -295,9 +350,7 @@ class TimedWindowTrial(SingleStepTrial):
                     selected_test_score=None,
                     selected_artifact_path=None,
                     agent_elapsed_seconds=state.agent_elapsed_seconds,
-                    wall_elapsed_seconds=max(
-                        time.monotonic() - state.wall_started, 0.0
-                    ),
+                    wall_elapsed_seconds=max(_monotonic() - state.wall_started, 0.0),
                 )
             )
             raise RuntimeError("No iteration produced a finite intermediate score")
@@ -315,9 +368,7 @@ class TimedWindowTrial(SingleStepTrial):
                         state.selected_iteration
                     ),
                     agent_elapsed_seconds=state.agent_elapsed_seconds,
-                    wall_elapsed_seconds=max(
-                        time.monotonic() - state.wall_started, 0.0
-                    ),
+                    wall_elapsed_seconds=max(_monotonic() - state.wall_started, 0.0),
                     error="The selected iteration did not produce a test score",
                 )
             )
@@ -334,7 +385,7 @@ class TimedWindowTrial(SingleStepTrial):
                 selected_test_score=selected_test_score,
                 selected_artifact_path=state.artifact_paths[state.selected_iteration],
                 agent_elapsed_seconds=state.agent_elapsed_seconds,
-                wall_elapsed_seconds=max(time.monotonic() - state.wall_started, 0.0),
+                wall_elapsed_seconds=max(_monotonic() - state.wall_started, 0.0),
             )
         )
         await self._stop_agent_environment()
@@ -346,9 +397,8 @@ class TimedWindowTrial(SingleStepTrial):
         instruction: str,
         resume: bool,
         timeout_sec: float,
-        timeout_status: AgentPhaseStatus,
     ) -> AgentPhaseOutcome:
-        fallback_started = time.monotonic()
+        fallback_started = _monotonic()
         status = AgentPhaseStatus.COMPLETED
         try:
             await self._run_agent_phase(
@@ -359,7 +409,7 @@ class TimedWindowTrial(SingleStepTrial):
                 resume=resume,
             )
         except AgentTimeoutError as exc:
-            status = timeout_status
+            status = AgentPhaseStatus.GLOBAL_TIMEOUT
             step_result.exception_info = ExceptionInfo.from_exception(exc)
         except Exception as exc:
             status = AgentPhaseStatus.ERROR
@@ -367,7 +417,7 @@ class TimedWindowTrial(SingleStepTrial):
         finally:
             elapsed = self._agent_phase_elapsed(
                 step_result,
-                fallback_elapsed=max(time.monotonic() - fallback_started, 0.0),
+                fallback_elapsed=max(_monotonic() - fallback_started, 0.0),
                 agent_elapsed_seconds=cast(
                     TimedWindowAgent, self.agent
                 ).latest_agent_effort_seconds,
@@ -684,7 +734,7 @@ class TimedWindowTrial(SingleStepTrial):
                         selected_artifact_path=selected_artifact_path,
                         agent_elapsed_seconds=state.agent_elapsed_seconds,
                         wall_elapsed_seconds=max(
-                            time.monotonic() - state.wall_started, 0.0
+                            _monotonic() - state.wall_started, 0.0
                         ),
                         error=error,
                     )

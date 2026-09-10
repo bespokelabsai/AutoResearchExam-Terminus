@@ -74,6 +74,37 @@ def format_iteration_feedback(
     )
 
 
+def format_phase_instruction(
+    *,
+    instruction: str,
+    phase: int,
+    total_budget_seconds: float,
+    remaining_seconds: float,
+    previous_iteration_seconds: float,
+    previous_agent_effort_seconds: float,
+    previous_non_agent_seconds: float,
+    previous_validation_seconds: float,
+) -> str:
+    """Append global wall-clock accounting to one agent phase prompt."""
+    return (
+        f"{instruction}\n\n"
+        "Wall-clock accounting for this agent effort phase:\n"
+        f"- phase: {phase}\n"
+        f"- total autoresearch budget: {total_budget_seconds:.1f} seconds\n"
+        f"- wall-clock time remaining before this phase: "
+        f"{remaining_seconds:.1f} seconds\n"
+        f"- previous iteration wall-clock: "
+        f"{previous_iteration_seconds:.1f} seconds\n"
+        f"- previous agent effort: "
+        f"{previous_agent_effort_seconds:.1f} seconds\n"
+        f"- previous non-agent processing: "
+        f"{previous_non_agent_seconds:.1f} seconds\n"
+        f"- previous validation grading: "
+        f"{previous_validation_seconds:.1f} seconds\n"
+        "Only visible validation score/output is available to you."
+    )
+
+
 def extract_submission_summary(
     steps: Iterable[Any],
     *,

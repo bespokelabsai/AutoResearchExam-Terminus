@@ -33,17 +33,15 @@ def _fake_base_init(self, *args, max_turns=None, **kwargs) -> None:
 
 
 @pytest.mark.parametrize(
-    ("minimum", "maximum", "message"),
+    ("minimum", "message"),
     [
-        (0, 2, "min_time_per_iteration must be positive"),
-        (1, 0, "max_time_per_iteration must be positive"),
-        (3, 2, "cannot be below"),
-        (True, 2, "integer number of minutes"),
-        (1.5, 2, "integer number of minutes"),
+        (-1, "min_time_per_iteration cannot be negative"),
+        (True, "integer number of minutes"),
+        (1.5, "integer number of minutes"),
     ],
 )
-def test_iteration_windows_are_positive_ordered_integer_minutes(
-    monkeypatch, minimum, maximum, message
+def test_iteration_minimum_is_nonnegative_integer_minutes(
+    monkeypatch, minimum, message
 ) -> None:
     monkeypatch.setattr(agent_module.Terminus2, "__init__", _fake_base_init)
 
@@ -52,7 +50,6 @@ def test_iteration_windows_are_positive_ordered_integer_minutes(
             logs_dir=Path("logs"),
             model_name="provider/model",
             min_time_per_iteration=minimum,
-            max_time_per_iteration=maximum,
         )
 
 
@@ -64,12 +61,10 @@ def test_agent_exposes_user_timing_and_shared_budget_state(monkeypatch) -> None:
         model_name="provider/model",
         max_turns=7,
         output_token_budget="100",
-        min_time_per_iteration="2",
-        max_time_per_iteration="5",
+        min_time_per_iteration="0",
     )
 
-    assert agent.min_time_per_iteration == 2
-    assert agent.max_time_per_iteration == 5
+    assert agent.min_time_per_iteration == 0
     assert agent.remaining_turns == 7
     assert agent.can_continue is True
     assert agent.can_continue_autoresearch is True
@@ -98,7 +93,7 @@ def test_submission_summary_is_limited_to_the_current_iteration(monkeypatch) -> 
             message="EXPERIMENT_SUMMARY\nhypothesis: stale experiment",
         )
     ]
-    agent.begin_timed_iteration(effective_max_seconds=60)
+    agent.begin_timed_iteration()
     agent._trajectory_steps.append(
         SimpleNamespace(source="agent", message="current timeout response")
     )
@@ -115,7 +110,7 @@ def test_empty_current_iteration_does_not_reuse_an_old_summary(monkeypatch) -> N
         )
     ]
 
-    agent.begin_timed_iteration(effective_max_seconds=60)
+    agent.begin_timed_iteration()
 
     assert agent.latest_submission_summary() == ""
 
@@ -127,7 +122,6 @@ def _make_agent(monkeypatch, **overrides) -> TimedWindowAgent:
         "model_name": "provider/model",
         "max_turns": 20,
         "min_time_per_iteration": 2,
-        "max_time_per_iteration": 10,
     }
     kwargs.update(overrides)
     return TimedWindowAgent(**kwargs)
@@ -145,7 +139,7 @@ async def test_early_submission_is_refused_until_minimum_time(
 
     monkeypatch.setattr(agent_module.Terminus2, "_handle_llm_interaction", submit)
     agent = _make_agent(monkeypatch)
-    agent.begin_timed_iteration(effective_max_seconds=600)
+    agent.begin_timed_iteration()
 
     clock[0] = 130.0
     early = await agent._handle_llm_interaction(object(), "prompt")
@@ -159,7 +153,21 @@ async def test_early_submission_is_refused_until_minimum_time(
 
 
 @pytest.mark.asyncio
-async def test_reminders_fire_once_at_each_remaining_time_threshold(
+async def test_zero_minimum_allows_immediate_submission(monkeypatch) -> None:
+    async def submit(*args, **kwargs):
+        return ([], True, "", "analysis", "plan", object())
+
+    monkeypatch.setattr(agent_module.Terminus2, "_handle_llm_interaction", submit)
+    agent = _make_agent(monkeypatch, min_time_per_iteration=0)
+    agent.begin_timed_iteration()
+
+    result = await agent._handle_llm_interaction(object(), "prompt")
+
+    assert result[1] is True
+
+
+@pytest.mark.asyncio
+async def test_agent_does_not_inject_countdown_reminders(
     monkeypatch,
 ) -> None:
     clock = [0.0]
@@ -174,46 +182,13 @@ async def test_reminders_fire_once_at_each_remaining_time_threshold(
         agent_module.Terminus2, "_handle_llm_interaction", continue_working
     )
     agent = _make_agent(monkeypatch)
-    agent.begin_timed_iteration(effective_max_seconds=600)
+    agent.begin_timed_iteration()
 
     for instant in (299.0, 300.0, 301.0, 481.0, 541.0, 550.0):
         clock[0] = instant
         await agent._handle_llm_interaction(object(), "work")
 
-    reminder_prompts = [prompt for prompt in prompts if "remaining" in prompt]
-    assert len(reminder_prompts) == 3
-    assert "5 minutes remaining" in reminder_prompts[0]
-    assert "2 minutes remaining" in reminder_prompts[1]
-    assert "1 minute remaining" in reminder_prompts[2]
-
-
-@pytest.mark.asyncio
-async def test_crossing_several_thresholds_emits_every_required_reminder(
-    monkeypatch,
-) -> None:
-    clock = [0.0]
-    prompts: list[str] = []
-    monkeypatch.setattr(agent_module.time, "monotonic", lambda: clock[0])
-
-    async def continue_working(self, chat, prompt, *args, **kwargs):
-        prompts.append(prompt)
-        return ([], False, "", "analysis", "plan", object())
-
-    monkeypatch.setattr(
-        agent_module.Terminus2, "_handle_llm_interaction", continue_working
-    )
-    agent = _make_agent(monkeypatch)
-    agent.begin_timed_iteration(effective_max_seconds=600)
-
-    clock[0] = 550.0
-    await agent._handle_llm_interaction(object(), "work")
-    clock[0] = 560.0
-    await agent._handle_llm_interaction(object(), "work")
-
-    assert "5 minutes remaining" in prompts[0]
-    assert "2 minutes remaining" in prompts[0]
-    assert "1 minute remaining" in prompts[0]
-    assert "remaining" not in prompts[1]
+    assert prompts == ["work"] * 6
 
 
 @pytest.mark.asyncio
@@ -241,7 +216,7 @@ async def test_iteration_clock_restarts_after_phase_start_hooks(monkeypatch) -> 
     clock = [100.0]
     monkeypatch.setattr(agent_module.time, "monotonic", lambda: clock[0])
     agent = _make_agent(monkeypatch)
-    agent.begin_timed_iteration(effective_max_seconds=600)
+    agent.begin_timed_iteration()
     elapsed_at_agent_start: list[float] = []
 
     async def run_phase(self, instruction, environment, context):
@@ -319,7 +294,7 @@ async def test_output_token_budget_stops_the_current_phase_and_future_work(
     )
     agent = _make_agent(monkeypatch, output_token_budget=100)
     agent._chat = SimpleNamespace(total_output_tokens=100)
-    agent.begin_timed_iteration(effective_max_seconds=600)
+    agent.begin_timed_iteration()
 
     result = await agent._handle_llm_interaction(agent._chat, "work")
 
@@ -353,7 +328,6 @@ async def test_truncated_responses_excluded_from_chat_still_consume_budget(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
-        max_time_per_iteration=2,
         output_token_budget=64,
     )
 
@@ -406,7 +380,6 @@ async def test_truncation_retry_stops_once_its_output_consumes_budget(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
-        max_time_per_iteration=2,
         output_token_budget=64,
     )
 
@@ -444,7 +417,6 @@ async def test_direct_fallback_response_usage_consumes_budget(monkeypatch) -> No
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
-        max_time_per_iteration=2,
         output_token_budget=17,
     )
 
@@ -482,7 +454,6 @@ async def test_resume_context_includes_direct_untracked_model_output(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
-        max_time_per_iteration=2,
         auto_summarization=False,
     )
     agent._chat = SimpleNamespace(

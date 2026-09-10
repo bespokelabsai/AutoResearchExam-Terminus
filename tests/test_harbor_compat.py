@@ -48,8 +48,7 @@ def test_trial_constructs_against_the_supported_harbor_release(
             model_name="openai/test-model",
             kwargs={
                 "max_turns": 2,
-                "min_time_per_iteration": 1,
-                "max_time_per_iteration": 1,
+                "min_time_per_iteration": 0,
             },
         ),
         environment=EnvironmentConfig(type=EnvironmentType.DOCKER),
@@ -66,7 +65,7 @@ def test_trial_constructs_against_the_supported_harbor_release(
         trial_config,
         _task=task,
         _task_download_result=download,
-        timed_window_config=TimedWindowConfig(2, 120, 1, 1),
+        timed_window_config=TimedWindowConfig(2, 120, 0),
     )
 
     try:

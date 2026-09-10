@@ -38,9 +38,15 @@ def test_iteration_record_separates_visible_and_private_grader_data() -> None:
         trial_id="trial-1",
         iteration=2,
         started_at="start",
+        submitted_at="submitted",
         finished_at="finish",
         agent_elapsed_seconds=12.5,
         wall_elapsed_seconds=20.0,
+        wall_clock_budget_seconds=60.0,
+        wall_clock_remaining_seconds=40.0,
+        agent_effort_seconds=7.5,
+        evaluation_seconds=3.0,
+        min_time_per_iteration=0,
         turns=3,
         submission_summary="improved parser",
         intermediate=GraderRecord(score=0.8, stdout="visible"),
@@ -55,6 +61,12 @@ def test_iteration_record_separates_visible_and_private_grader_data() -> None:
     private = record.as_private_dict()
 
     assert public["intermediate"]["score"] == 0.8
+    assert public["submitted_at"] == "submitted"
+    assert public["wall_clock_budget_seconds"] == 60.0
+    assert public["wall_clock_remaining_seconds"] == 40.0
+    assert public["agent_effort_seconds"] == 7.5
+    assert public["evaluation_seconds"] == 3.0
+    assert public["min_time_per_iteration"] == 0
     assert public["public_best_at_record_time"] is True
     assert "selected" not in public
     assert "test" not in public
@@ -63,6 +75,9 @@ def test_iteration_record_separates_visible_and_private_grader_data() -> None:
         "attempt_id": "attempt-1",
         "trial_id": "trial-1",
         "iteration": 2,
+        "submitted_at": "submitted",
+        "finished_at": "finish",
+        "wall_elapsed_seconds": 20.0,
         "test": GraderRecord(score=0.4, stdout="PRIVATE-SENTINEL").as_dict(),
     }
 
