@@ -210,6 +210,29 @@ async def test_failed_preflight_does_not_mutate_agent_configuration(
     assert agent.kwargs == {"min_time_per_iteration": 0}
 
 
+@pytest.mark.asyncio
+async def test_failed_preflight_does_not_mutate_modal_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = _valid_job(tmp_path, backend=EnvironmentType.MODAL)
+    environment = job.config.environment
+
+    def fail_preflight(**_: object) -> None:
+        raise RuntimeError("preflight failed")
+
+    monkeypatch.setattr(
+        "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
+        fail_preflight,
+    )
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
+
+    with pytest.raises(RuntimeError, match="preflight failed"):
+        await plugin.on_job_start(job)
+
+    assert environment.kwargs == {}
+
+
 def test_plugin_rejects_unknown_settings() -> None:
     with pytest.raises(TypeError, match="unexpected_keyword"):
         TimedWindowPlugin(

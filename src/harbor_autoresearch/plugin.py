@@ -108,17 +108,25 @@ class TimedWindowPlugin:
             prepared_agents.append((config.agent, prepared_agent))
             trial_tasks.append((config, task, window))
 
+        prepared_environments: list[tuple[Any, Any]] = []
         if backend == "modal":
             required_lifetime = max(
                 self._modal_minimum_lifetime(config, task, window)
                 for config, task, window in trial_tasks
             )
+            environments = [
+                job.config.environment,
+                *(config.environment for config in trial_configs),
+            ]
+            prepared_environment_values = [
+                deepcopy(environment) for environment in environments
+            ]
             self._configure_modal_lifetime(
-                [
-                    job.config.environment,
-                    *(config.environment for config in trial_configs),
-                ],
+                prepared_environment_values,
                 required_lifetime=required_lifetime,
+            )
+            prepared_environments = list(
+                zip(environments, prepared_environment_values, strict=True)
             )
 
         EnvironmentFactory.run_preflight(
@@ -131,6 +139,8 @@ class TimedWindowPlugin:
             agent.name = prepared_agent.name
             agent.import_path = prepared_agent.import_path
             agent.kwargs = prepared_agent.kwargs
+        for environment, prepared_environment in prepared_environments:
+            environment.kwargs = prepared_environment.kwargs
 
         original_create = Trial.__dict__["create"]
         plugin = self
