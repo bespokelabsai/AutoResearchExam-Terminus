@@ -29,6 +29,16 @@ from harbor_autoresearch.trial import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _run_thread_offloads_inline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep unit tests deterministic where sandbox thread wakeups are unavailable."""
+
+    async def run_synchronously(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "to_thread", run_synchronously)
+
+
 class _Agent:
     def __init__(self) -> None:
         self.remaining_turns = 10
@@ -178,6 +188,9 @@ async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hid
     assert summary["scores"][0]["wall_clock_remaining_seconds"] == 100
     assert summary["scores"][0]["agent_effort_seconds"] == 10
     assert summary["scores"][0]["evaluation_seconds"] == 5
+    selected_archive = Path(summary["selected_artifact_path"])
+    assert selected_archive.is_file()
+    assert stat.S_IMODE(selected_archive.stat().st_mode) == 0o444
     assert not (trial_dir / "autoresearch/iterations/0001/artifacts").exists()
     first_public = json.loads(public_text.splitlines()[0])
     assert first_public["public_best_at_record_time"] is True

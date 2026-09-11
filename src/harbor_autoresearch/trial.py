@@ -31,7 +31,7 @@ from harbor.trial.errors import AgentTimeoutError
 from harbor.trial.hooks import TrialEvent
 from harbor.trial.single_step import SingleStepTrial
 
-from .agent import TimedWindowAgent
+from .agent import AutoResearchExamAgent
 from .config import TimedWindowConfig
 from .progress import ProgressStore
 from .protocol import (
@@ -97,8 +97,8 @@ class TimedWindowTrial(SingleStepTrial):
             _task=_task,
             _task_download_result=_task_download_result,
         )
-        if not isinstance(self.agent, TimedWindowAgent):
-            raise TypeError("TimedWindowTrial requires TimedWindowAgent")
+        if not isinstance(self.agent, AutoResearchExamAgent):
+            raise TypeError("TimedWindowTrial requires AutoResearchExamAgent")
         if (
             resolve_task_verifier_mode(self.task.config)
             != VerifierEnvironmentMode.SEPARATE
@@ -123,7 +123,7 @@ class TimedWindowTrial(SingleStepTrial):
     @override
     async def _run(self) -> None:
         self.result.step_results = []
-        agent = cast(TimedWindowAgent, self.agent)
+        agent = cast(AutoResearchExamAgent, self.agent)
         workspace_has_git = await self._initialize_workspace()
 
         state = _RunState(wall_started=_monotonic())
@@ -419,7 +419,7 @@ class TimedWindowTrial(SingleStepTrial):
                 step_result,
                 fallback_elapsed=max(_monotonic() - fallback_started, 0.0),
                 agent_elapsed_seconds=cast(
-                    TimedWindowAgent, self.agent
+                    AutoResearchExamAgent, self.agent
                 ).latest_agent_effort_seconds,
             )
             await self._sync_agent_output(step_result)

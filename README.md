@@ -1,101 +1,158 @@
-# Harbor AutoResearch
+# AutoResearchExam Harness
 
-This package adds repeated research runs to Harbor. One agent session stays open while
-the agent tests several changes. One wall clock limits the full run. The agent sees the
-validation result and remaining time after each submitted change. Private test results
-stay outside the agent environment.
+This package adds a timed research window to Harbor for the
+[AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam) tasks. One
+agent session can submit many experiments during the window. The agent receives
+the public validation result and the remaining time after each submission. The
+private test result stays outside the agent environment.
+
+The harness supports local Docker and Modal.
+
+## Requirements
+
+You need Python 3.12 and Harbor 0.22. For local runs, install Docker and make
+sure its service is running. For Modal runs, sign in to Modal before starting a
+job.
+
+Your model provider API key must be available in the environment where you run
+Harbor. See the Harbor documentation for the environment variable required by
+your provider.
 
 ## Install
 
+Clone this repository and install it in your Harbor environment:
+
 ```bash
-pip install -e .
+git clone https://github.com/bespokelabsai/AutoresearchExamHarness.git
+cd AutoresearchExamHarness
+pip install .
 ```
 
-For Modal:
+Install the Modal support when you plan to use Modal:
 
 ```bash
-pip install -e '.[modal]'
+pip install ".[modal]"
 ```
 
-## Run
+Check that Harbor can find the plugin:
 
 ```bash
-harbor run --repo bespokelabsai/AutoResearchExam -p . \
+harbor plugins list
+```
+
+## Download the tasks
+
+Clone AutoResearchExam into the local `tasks` directory:
+
+```bash
+git clone https://github.com/bespokelabsai/AutoResearchExam.git tasks
+```
+
+Each task is a folder inside `tasks/`. The command below selects one folder by
+name.
+
+## Run one task
+
+```bash
+harbor run \
+  -p tasks \
   -i cpu-decoder-graph-executor \
-  -a harbor_autoresearch.agent:TimedWindowAgent \
-  -m <model> -e docker \
-  --plugin autoresearch-timed \
+  -a AutoResearchExamAgent \
+  -m openai/gpt-5.6-sol \
+  -e docker \
+  --plugin autoresearch-exam \
   --pk max_iterations=500 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --ak max_turns=500 \
-  --ak reasoning_effort=high
+  --pk max_turns=2000 \
+  --pk reasoning_effort=high
 ```
 
-Choose `-e modal` for Modal execution.
+Use `-e modal` to run the task on Modal. Replace the task name and model with the
+ones you want to use.
 
-Modal limits one persistent sandbox to 24 hours. The plugin rejects a longer wall clock
-budget and reserves time for the last submitted change to finish grading.
+The plugin settings are:
 
-## Run settings
-
-You can set these values for each run:
-
-| Setting | Harbor option |
+| Setting | Meaning |
 | --- | --- |
-| Model | `-m <model>` |
-| Model effort | `--ak reasoning_effort=<level>` |
-| Backend | `-e docker` or `-e modal` |
-| Total wall time in seconds | `--pk max_duration_seconds=<seconds>` |
-| Maximum experiment count | `--pk max_iterations=<count>` |
-| Minimum minutes per experiment, default 0 | `--pk min_time_per_iteration=<minutes>` |
-| Total agent turns | `--ak max_turns=<count>` |
-| Total output tokens | `--ak output_token_budget=<count>` |
-| Session summary between experiments | `--pk auto_summarize=true` or `false` |
+| `max_iterations` | Maximum number of submitted experiments. The allowed range is 1 to 500. |
+| `max_duration_seconds` | Total research window in seconds. |
+| `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. Zero permits an immediate submission. |
+| `max_turns` | Maximum model turns shared by the full agent session. |
+| `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
 
-The total wall time includes agent work, artifact collection, grading, and harness work.
-There is no maximum time for one experiment. Each agent phase can use all time left in
-the full run. A positive minimum prevents an early submission. A minimum of zero allows
-the agent to submit at once.
+The total research window includes agent work, artifact collection, public
+validation, private testing, and harness work. One experiment can use all the
+time that remains. The harness does not interrupt an experiment with reminder
+messages.
 
-The harness adds a timing block to every agent phase. It includes the full budget, time
-left, and the previous phase timing. After a submitted change is graded, the next phase
-also includes the validation score, validation error, and validation output. It never
-includes private test data. If the deadline occurs during agent work, the harness grades
-that work once and does not start another phase. Grading may finish after the deadline.
+After each submission, the agent receives:
 
-The task must use a separate verifier. It must contain `tests/Dockerfile`,
-`tests/intermediate.sh`, and `tests/test.sh`. The intermediate script provides the
-feedback that the agent sees. The test script stays private. The package chooses the
-highest finite intermediate score and uses the private score for that same artifact as
-the final Harbor reward. An earlier experiment wins when intermediate scores tie.
+* The public validation score.
+* The public validation output or error.
+* The previous iteration timing and the time remaining in the research window.
+
+The harness runs the private test for every accepted submission. It records the
+private result on the host, but it never sends the private score or private test
+output to the agent. The harness selects the experiment with the highest finite
+public score. It uses the private score for that same experiment as the final
+Harbor reward. If public scores tie, the earlier experiment wins.
+
+Local Docker can use a research window of up to 172800 seconds. Modal limits a
+sandbox to 86400 seconds. A Modal run must also leave enough time for artifact
+collection and the final public and private graders, so use a research window
+shorter than 86400 seconds.
 
 ## Results
 
-Each trial contains an `autoresearch` directory. It includes:
+Harbor writes each job under `jobs/`. Every trial has an `autoresearch`
+directory with these files:
 
-* `iterations.jsonl` with public validation results, submission times, and wall clock
-  timing for each experiment.
-* `private-iterations.jsonl` with every private test result and its grader times.
-* `summary.json` with all scores, the selected experiment, the final score, timing, the
-  model, the backend, and the stop reason.
-* `iterations/<number>/artifact.tar.gz` with the exact submitted artifacts.
-* `iterations/<number>/intermediate` and `iterations/<number>/test` with grader logs.
+* `iterations.jsonl` contains each public validation result, submission time,
+  and timing record.
+* `private-iterations.jsonl` contains each private test result and grader time.
+* `summary.json` contains the selected experiment, final score, all recorded
+  scores, timing, model, backend, and stop reason.
+* `iterations/<number>/artifact.tar.gz` contains the exact submitted artifact.
+* `iterations/<number>/intermediate` contains the public grader logs.
+* `iterations/<number>/test` contains the private grader logs.
 
-Read scores while a run is active:
+Watch public scores during a run:
 
 ```bash
 tail -f jobs/<job>/<trial>/autoresearch/iterations.jsonl
 ```
 
-Read the selected intermediate and test scores after the run:
+Read the selected public and private scores after a run:
 
 ```bash
 jq '{public_best_score, selected_iteration, selected_test_score, scores}' \
   jobs/<job>/<trial>/autoresearch/summary.json
 ```
 
-The result directory and files use private host permissions because the summary and
-private stream contain test scores. They are never mounted into the agent environment.
+The harness uses private host permissions for result files that contain private
+scores. It never mounts those files into the agent environment. You can also use
+`harbor view` with the jobs directory to open Harbor's result viewer.
 
-Open the jobs directory with `harbor view` to use Harbor's normal result viewer.
+## Task contract
+
+Each task must use a separate verifier environment. Its `tests/` directory must
+contain `Dockerfile`, `intermediate.sh`, and `test.sh`. The harness gives the
+output from `intermediate.sh` to the agent. It keeps `test.sh` and its output
+private.
+
+## Development
+
+Install the development tools and run the checks:
+
+```bash
+pip install -e ".[dev]"
+ruff check .
+ruff format --check .
+ty check
+pytest -m "not docker"
+python -m build
+python -m twine check dist/*
+```
+
+The Apache License 2.0 covers this project. See [LICENSE](LICENSE).

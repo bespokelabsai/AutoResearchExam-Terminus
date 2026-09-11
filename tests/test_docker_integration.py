@@ -134,20 +134,20 @@ def test_harbor_cli_runs_one_timed_window_with_local_docker(tmp_path: Path) -> N
         "--jobs-dir",
         str(jobs_dir),
         "--agent",
-        "harbor_autoresearch.agent:TimedWindowAgent",
+        "AutoResearchExamAgent",
         "--model",
         "openai/test-model",
         "--env",
         "docker",
         "--plugin",
-        "autoresearch-timed",
+        "autoresearch-exam",
         "--pk",
         "max_iterations=1",
         "--pk",
         "max_duration_seconds=60",
         "--pk",
         "min_time_per_iteration=0",
-        "--ak",
+        "--pk",
         "max_turns=2",
         "--ak",
         "record_terminal_session=false",
@@ -173,7 +173,7 @@ def test_harbor_cli_runs_one_timed_window_with_local_docker(tmp_path: Path) -> N
     summaries = list(jobs_dir.rglob("autoresearch/summary.json"))
     assert len(summaries) == 1
     summary = json.loads(summaries[0].read_text())
-    assert summary["stop_reason"] == "max_autoresearch_iterations"
+    assert summary["stop_reason"] == "max_autoresearch_duration_seconds"
     assert summary["public_best_score"] == 0.75
     assert summary["selected_test_score"] == 0.5
     assert summary["configuration"]["model"] == "openai/test-model"

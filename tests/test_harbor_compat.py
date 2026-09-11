@@ -12,7 +12,7 @@ from harbor.models.trial.config import (
 )
 from harbor.tasks.client import TaskDownloadResult
 
-from harbor_autoresearch.agent import TimedWindowAgent
+from harbor_autoresearch.agent import AutoResearchExamAgent
 from harbor_autoresearch.config import TimedWindowConfig
 from harbor_autoresearch.trial import TimedWindowTrial
 
@@ -44,7 +44,8 @@ def test_trial_constructs_against_the_supported_harbor_release(
         task=task_config,
         trials_dir=tmp_path / "trials",
         agent=AgentConfig(
-            name="harbor_autoresearch.agent:TimedWindowAgent",
+            name="AutoResearchExamAgent",
+            import_path="harbor_autoresearch.agent:AutoResearchExamAgent",
             model_name="openai/test-model",
             kwargs={
                 "max_turns": 2,
@@ -69,7 +70,7 @@ def test_trial_constructs_against_the_supported_harbor_release(
     )
 
     try:
-        assert isinstance(trial.agent, TimedWindowAgent)
+        assert isinstance(trial.agent, AutoResearchExamAgent)
         assert trial.timed_window_config.max_duration_seconds == 120
     finally:
         trial._close_logger_handler()

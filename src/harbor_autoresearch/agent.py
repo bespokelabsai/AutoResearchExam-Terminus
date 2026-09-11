@@ -96,10 +96,15 @@ def _boolean(value: Any, name: str) -> bool:
     raise ValueError(f"{name} must be a boolean")
 
 
-class TimedWindowAgent(Terminus2):
+class AutoResearchExamAgent(Terminus2):
     """Keep one terminal and model conversation across timed experiments."""
 
     SUPPORTS_RESUME = True
+
+    @staticmethod
+    def name() -> str:
+        """Return the stable public name recorded by Harbor."""
+        return "AutoResearchExamAgent"
 
     def __init__(
         self,
@@ -170,15 +175,18 @@ class TimedWindowAgent(Terminus2):
     ) -> None:
         """Continue the existing conversation and terminal for another experiment."""
         if self._chat is None or self._session is None:
-            raise RuntimeError("TimedWindowAgent cannot resume before its first run")
+            raise RuntimeError(
+                "AutoResearchExamAgent cannot resume before its first run"
+            )
 
         self._n_episodes = 0
         if not await self._session.is_session_alive():
             raise RuntimeError(
-                "TimedWindowAgent cannot resume because its terminal session has ended"
+                "AutoResearchExamAgent cannot resume because its terminal session has "
+                "ended"
             )
         if self.remaining_turns <= 0:
-            raise RuntimeError("TimedWindowAgent has exhausted max_turns")
+            raise RuntimeError("AutoResearchExamAgent has exhausted max_turns")
         if self._iteration_started_monotonic is None:
             self.begin_timed_iteration()
         self._iteration_started_monotonic = time.monotonic()

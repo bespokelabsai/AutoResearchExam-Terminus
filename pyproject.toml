@@ -1,9 +1,21 @@
 [project]
 name = "harbor-autoresearch"
-version = "0.1.0"
-description = "Timed multi-iteration research runs for Harbor tasks"
+dynamic = ["version"]
+description = "Timed AutoResearchExam runs for Harbor"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Bespoke Labs" },
+]
+keywords = ["autoresearch", "evaluation", "harbor"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "harbor>=0.22.0,<0.23.0",
 ]
@@ -11,18 +23,37 @@ dependencies = [
 [project.optional-dependencies]
 modal = ["harbor[modal]>=0.22.0,<0.23.0"]
 dev = [
-    "pytest>=8.4",
-    "pytest-asyncio>=1.2",
-    "ruff>=0.15",
-    "ty>=0.0.49",
+    "build>=1.2,<2",
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.2,<2",
+    "ruff>=0.15,<0.16",
+    "twine>=6,<7",
+    "ty>=0.0.49,<0.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/bespokelabsai/AutoresearchExamHarness"
+Repository = "https://github.com/bespokelabsai/AutoresearchExamHarness.git"
+Issues = "https://github.com/bespokelabsai/AutoresearchExamHarness/issues"
+
 [project.entry-points."harbor.plugins"]
-autoresearch-timed = "harbor_autoresearch.plugin:TimedWindowPlugin"
+autoresearch-exam = "harbor_autoresearch.plugin:TimedWindowPlugin"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/harbor_autoresearch/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/LICENSE",
+    "/README.md",
+    "/pyproject.toml",
+    "/src",
+    "/tests",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/harbor_autoresearch"]
@@ -41,4 +72,4 @@ line-length = 88
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ty.src]
-include = ["src", "tests"]
+include = ["src"]

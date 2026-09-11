@@ -43,7 +43,7 @@ def _valid_job(
         task=task_config,
         trials_dir=tmp_path / "trials",
         agent=AgentConfig(
-            name="harbor_autoresearch.agent:TimedWindowAgent",
+            name="AutoResearchExamAgent",
             model_name="provider/model",
             kwargs={
                 "min_time_per_iteration": 0,
@@ -90,12 +90,107 @@ def test_plugin_defaults_iteration_minimum_to_zero() -> None:
     assert window.auto_summarize is False
 
 
-def test_plugin_rejects_a_per_iteration_maximum() -> None:
-    with pytest.raises(ValueError, match="per-iteration maximum is not supported"):
+@pytest.mark.asyncio
+async def test_plugin_accepts_and_preserves_the_public_agent_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = _valid_job(tmp_path)
+    agent = job._trial_configs[0].agent
+    agent.name = "AutoResearchExamAgent"
+    agent.import_path = None
+    monkeypatch.setattr(
+        "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
+        lambda **_: None,
+    )
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
+
+    await plugin.on_job_start(job)
+    try:
+        assert agent.name == "AutoResearchExamAgent"
+        assert agent.import_path == ("harbor_autoresearch.agent:AutoResearchExamAgent")
+    finally:
+        await plugin.on_job_end(object())
+
+
+@pytest.mark.asyncio
+async def test_plugin_forwards_all_public_agent_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = _valid_job(tmp_path)
+    agent = job._trial_configs[0].agent
+    agent.name = "AutoResearchExamAgent"
+    agent.import_path = None
+    monkeypatch.setattr(
+        "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
+        lambda **_: None,
+    )
+    plugin = TimedWindowPlugin(
+        max_iterations=2,
+        max_duration_seconds=120,
+        max_turns=2_000,
+        reasoning_effort="high",
+        output_token_budget=12_345,
+        auto_summarization=False,
+        use_responses_api=True,
+    )
+
+    await plugin.on_job_start(job)
+    try:
+        assert agent.kwargs == {
+            "min_time_per_iteration": 0,
+            "max_turns": 2_000,
+            "reasoning_effort": "high",
+            "output_token_budget": 12_345,
+            "auto_summarization": False,
+            "use_responses_api": True,
+        }
+    finally:
+        await plugin.on_job_end(object())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("setting", "agent_value", "plugin_value"),
+    [
+        ("min_time_per_iteration", 1, 2),
+        ("max_turns", 5, 6),
+        ("reasoning_effort", "medium", "high"),
+        ("output_token_budget", 100, 200),
+        ("auto_summarization", False, True),
+        ("use_responses_api", False, True),
+    ],
+)
+async def test_plugin_rejects_conflicting_agent_settings_without_overwriting_them(
+    tmp_path: Path,
+    setting: str,
+    agent_value: object,
+    plugin_value: object,
+) -> None:
+    job = _valid_job(tmp_path)
+    agent = job._trial_configs[0].agent
+    agent.name = "AutoResearchExamAgent"
+    agent.import_path = None
+    agent.kwargs = {setting: agent_value}
+    plugin = TimedWindowPlugin(
+        max_iterations=2,
+        max_duration_seconds=120,
+        **{setting: plugin_value},
+    )
+
+    with pytest.raises(ValueError, match=f"Conflicting {setting}"):
+        await plugin.on_job_start(job)
+
+    assert agent.kwargs == {setting: agent_value}
+
+
+def test_plugin_rejects_unknown_settings() -> None:
+    with pytest.raises(TypeError, match="unexpected_keyword"):
         TimedWindowPlugin(
             max_iterations=2,
             max_duration_seconds=120,
-            max_time_per_iteration=1,
+            unexpected_keyword=True,
         )
 
 
@@ -344,7 +439,7 @@ async def test_plugin_timing_is_injected_before_factory_builds_the_trial(
         max_iterations=2,
         max_duration_seconds=120,
         min_time_per_iteration=0,
-        auto_summarize=False,
+        auto_summarization=False,
     )
     await plugin.on_job_start(job)
 

@@ -20,7 +20,8 @@ from harbor.trial.trial import Trial
 
 from .config import TimedWindowConfig, validate_backend
 
-_AGENT_IMPORT_PATH = "harbor_autoresearch.agent:TimedWindowAgent"
+_AGENT_NAME = "AutoResearchExamAgent"
+_AGENT_IMPORT_PATH = "harbor_autoresearch.agent:AutoResearchExamAgent"
 _MODAL_STORAGE_LIMIT_MB = 512 * 1024
 _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS = 24 * 60 * 60
 # The final accepted submission can outlive the research deadline while its two
@@ -42,19 +43,20 @@ class TimedWindowPlugin:
         max_iterations: int,
         max_duration_seconds: int,
         min_time_per_iteration: int | None = None,
-        max_time_per_iteration: Any = None,
-        auto_summarize: bool | None = None,
-        **_: Any,
+        max_turns: int | None = None,
+        reasoning_effort: str | None = None,
+        output_token_budget: int | None = None,
+        auto_summarization: bool | None = None,
+        use_responses_api: bool | None = None,
     ) -> None:
-        if max_time_per_iteration is not None:
-            raise ValueError(
-                "A per-iteration maximum is not supported; the global wall-clock "
-                "deadline bounds every agent phase"
-            )
         self.max_iterations = max_iterations
         self.max_duration_seconds = max_duration_seconds
         self.min_time_per_iteration = min_time_per_iteration
-        self.auto_summarize = auto_summarize
+        self.max_turns = max_turns
+        self.reasoning_effort = reasoning_effort
+        self.output_token_budget = output_token_budget
+        self.auto_summarization = auto_summarization
+        self.use_responses_api = use_responses_api
         self._original_create: Any = None
         self._installed_create: Any = None
         self._job: Any = None
@@ -88,6 +90,7 @@ class TimedWindowPlugin:
             raise ValueError("Timed-window jobs must contain at least one trial")
         trial_tasks: list[tuple[Any, Task, TimedWindowConfig]] = []
         for config in trial_configs:
+            self._normalize_agent(config.agent)
             self._apply_agent_overrides(config)
             self._validate_trial_config(config)
             download = job._task_download_results[config.task.get_task_id()]
@@ -188,16 +191,7 @@ class TimedWindowPlugin:
         minimum = self.min_time_per_iteration
         if minimum is None:
             minimum = kwargs.get("min_time_per_iteration", 0)
-        if kwargs.get("max_time_per_iteration") is not None:
-            raise ValueError(
-                "A per-iteration maximum is not supported; remove "
-                "max_time_per_iteration from agent kwargs"
-            )
-        auto_summarize = self.auto_summarize
-        if auto_summarize is None:
-            auto_summarize = kwargs.get(
-                "auto_summarization", kwargs.get("auto_summarize", True)
-            )
+        auto_summarize = kwargs.get("auto_summarization", True)
         return TimedWindowConfig(
             max_iterations=self.max_iterations,
             max_duration_seconds=self.max_duration_seconds,
@@ -209,7 +203,11 @@ class TimedWindowPlugin:
         kwargs = trial_config.agent.kwargs
         overrides = {
             "min_time_per_iteration": self.min_time_per_iteration,
-            "auto_summarization": self.auto_summarize,
+            "max_turns": self.max_turns,
+            "reasoning_effort": self.reasoning_effort,
+            "output_token_budget": self.output_token_budget,
+            "auto_summarization": self.auto_summarization,
+            "use_responses_api": self.use_responses_api,
         }
         for name, value in overrides.items():
             if value is None:
@@ -220,6 +218,21 @@ class TimedWindowPlugin:
                     f"Conflicting {name} values in agent and plugin kwargs"
                 )
             kwargs[name] = value
+
+    @staticmethod
+    def _normalize_agent(agent: Any) -> None:
+        """Resolve the public shorthand while preserving its result display name."""
+        configured_name = agent.name
+        configured_import_path = agent.import_path
+        if configured_name in {_AGENT_NAME, _AGENT_IMPORT_PATH}:
+            if configured_import_path not in {None, _AGENT_IMPORT_PATH}:
+                raise ValueError(
+                    f"{_AGENT_NAME} cannot be combined with another import path"
+                )
+            agent.name = _AGENT_NAME
+            agent.import_path = _AGENT_IMPORT_PATH
+        elif configured_import_path == _AGENT_IMPORT_PATH and configured_name is None:
+            agent.name = _AGENT_NAME
 
     @staticmethod
     def _backend_name(environment: Any) -> str:
@@ -306,9 +319,8 @@ class TimedWindowPlugin:
             raise ValueError("Artifacts must be declared by the task")
 
         agent = config.agent
-        configured_agent = agent.import_path or agent.name
-        if configured_agent != _AGENT_IMPORT_PATH:
-            raise ValueError(f"Timed-window runs require agent {_AGENT_IMPORT_PATH!r}")
+        if agent.name != _AGENT_NAME or agent.import_path != _AGENT_IMPORT_PATH:
+            raise ValueError(f"Timed-window runs require agent {_AGENT_NAME!r}")
         if not agent.model_name:
             raise ValueError("Timed-window runs require a model")
 

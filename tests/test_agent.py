@@ -10,7 +10,14 @@ from harbor.models.agent.context import AgentContext
 from harbor.models.metric import UsageInfo
 
 import harbor_autoresearch.agent as agent_module
-from harbor_autoresearch.agent import TimedWindowAgent
+from harbor_autoresearch.agent import AutoResearchExamAgent
+
+
+def test_agent_uses_the_public_release_name() -> None:
+    assert agent_module.AutoResearchExamAgent.name() == "AutoResearchExamAgent"
+    assert agent_module.AutoResearchExamAgent.import_path() == (
+        "harbor_autoresearch.agent:AutoResearchExamAgent"
+    )
 
 
 def _fake_base_init(self, *args, max_turns=None, **kwargs) -> None:
@@ -46,7 +53,7 @@ def test_iteration_minimum_is_nonnegative_integer_minutes(
     monkeypatch.setattr(agent_module.Terminus2, "__init__", _fake_base_init)
 
     with pytest.raises(ValueError, match=message):
-        TimedWindowAgent(
+        AutoResearchExamAgent(
             logs_dir=Path("logs"),
             model_name="provider/model",
             min_time_per_iteration=minimum,
@@ -56,7 +63,7 @@ def test_iteration_minimum_is_nonnegative_integer_minutes(
 def test_agent_exposes_user_timing_and_shared_budget_state(monkeypatch) -> None:
     monkeypatch.setattr(agent_module.Terminus2, "__init__", _fake_base_init)
 
-    agent = TimedWindowAgent(
+    agent = AutoResearchExamAgent(
         logs_dir=Path("logs"),
         model_name="provider/model",
         max_turns=7,
@@ -115,7 +122,7 @@ def test_empty_current_iteration_does_not_reuse_an_old_summary(monkeypatch) -> N
     assert agent.latest_submission_summary() == ""
 
 
-def _make_agent(monkeypatch, **overrides) -> TimedWindowAgent:
+def _make_agent(monkeypatch, **overrides) -> AutoResearchExamAgent:
     monkeypatch.setattr(agent_module.Terminus2, "__init__", _fake_base_init)
     kwargs = {
         "logs_dir": Path("logs"),
@@ -124,7 +131,7 @@ def _make_agent(monkeypatch, **overrides) -> TimedWindowAgent:
         "min_time_per_iteration": 2,
     }
     kwargs.update(overrides)
-    return TimedWindowAgent(**kwargs)
+    return AutoResearchExamAgent(**kwargs)
 
 
 @pytest.mark.asyncio
@@ -324,7 +331,7 @@ async def test_truncated_responses_excluded_from_chat_still_consume_budget(
         self._llm = underlying
 
     monkeypatch.setattr(agent_module.Terminus2, "__init__", init_with_llm)
-    agent = TimedWindowAgent(
+    agent = AutoResearchExamAgent(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
@@ -376,7 +383,7 @@ async def test_truncation_retry_stops_once_its_output_consumes_budget(
     monkeypatch.setattr(agent_module.Terminus2, "__init__", init_with_llm)
     monkeypatch.setattr(agent_module.Terminus2, "_query_llm", stock_retry)
     monkeypatch.setattr(agent_module.Terminus2, "_run_agent_loop", drive_query)
-    agent = TimedWindowAgent(
+    agent = AutoResearchExamAgent(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
@@ -413,7 +420,7 @@ async def test_direct_fallback_response_usage_consumes_budget(monkeypatch) -> No
         self._llm = underlying
 
     monkeypatch.setattr(agent_module.Terminus2, "__init__", init_with_llm)
-    agent = TimedWindowAgent(
+    agent = AutoResearchExamAgent(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
@@ -450,7 +457,7 @@ async def test_resume_context_includes_direct_untracked_model_output(
         self._llm = DirectLLM()
 
     monkeypatch.setattr(agent_module.Terminus2, "__init__", init_with_llm)
-    agent = TimedWindowAgent(
+    agent = AutoResearchExamAgent(
         logs_dir=Path("logs"),
         model_name="provider/model",
         min_time_per_iteration=1,
