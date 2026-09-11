@@ -104,7 +104,7 @@ class AutoResearchExamAgent(Terminus2):
     @staticmethod
     def name() -> str:
         """Return the stable public name recorded by Harbor."""
-        return "AutoResearchExamAgent"
+        return "autoresearchexam-terminus"
 
     def __init__(
         self,
@@ -176,17 +176,17 @@ class AutoResearchExamAgent(Terminus2):
         """Continue the existing conversation and terminal for another experiment."""
         if self._chat is None or self._session is None:
             raise RuntimeError(
-                "AutoResearchExamAgent cannot resume before its first run"
+                "autoresearchexam-terminus cannot resume before its first run"
             )
 
         self._n_episodes = 0
         if not await self._session.is_session_alive():
             raise RuntimeError(
-                "AutoResearchExamAgent cannot resume because its terminal session has "
-                "ended"
+                "autoresearchexam-terminus cannot resume because its terminal "
+                "session has ended"
             )
         if self.remaining_turns <= 0:
-            raise RuntimeError("AutoResearchExamAgent has exhausted max_turns")
+            raise RuntimeError("autoresearchexam-terminus has exhausted max_turns")
         if self._iteration_started_monotonic is None:
             self.begin_timed_iteration()
         self._iteration_started_monotonic = time.monotonic()

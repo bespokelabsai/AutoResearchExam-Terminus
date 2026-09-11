@@ -57,7 +57,7 @@ name.
 harbor run \
   -p tasks \
   -i cpu-decoder-graph-executor \
-  -a AutoResearchExamAgent \
+  -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
@@ -78,7 +78,7 @@ Remove the `-i` task filter to run every task in the downloaded dataset:
 ```bash
 harbor run \
   -p tasks \
-  -a AutoResearchExamAgent \
+  -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \

@@ -21,7 +21,7 @@ from harbor.trial.trial import Trial
 
 from .config import TimedWindowConfig, validate_backend
 
-_AGENT_NAME = "AutoResearchExamAgent"
+_AGENT_NAME = "autoresearchexam-terminus"
 _AGENT_IMPORT_PATH = "harbor_autoresearch.agent:AutoResearchExamAgent"
 _MODAL_STORAGE_LIMIT_MB = 512 * 1024
 _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS = 24 * 60 * 60

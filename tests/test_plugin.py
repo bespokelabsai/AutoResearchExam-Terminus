@@ -43,7 +43,7 @@ def _valid_job(
         task=task_config,
         trials_dir=tmp_path / "trials",
         agent=AgentConfig(
-            name="AutoResearchExamAgent",
+            name="autoresearchexam-terminus",
             model_name="provider/model",
             kwargs={
                 "min_time_per_iteration": 0,
@@ -97,7 +97,7 @@ async def test_plugin_accepts_and_preserves_the_public_agent_name(
 ) -> None:
     job = _valid_job(tmp_path)
     agent = job._trial_configs[0].agent
-    agent.name = "AutoResearchExamAgent"
+    agent.name = "autoresearchexam-terminus"
     agent.import_path = None
     monkeypatch.setattr(
         "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
@@ -107,7 +107,7 @@ async def test_plugin_accepts_and_preserves_the_public_agent_name(
 
     await plugin.on_job_start(job)
     try:
-        assert agent.name == "AutoResearchExamAgent"
+        assert agent.name == "autoresearchexam-terminus"
         assert agent.import_path == ("harbor_autoresearch.agent:AutoResearchExamAgent")
     finally:
         await plugin.on_job_end(object())
@@ -120,7 +120,7 @@ async def test_plugin_forwards_all_public_agent_settings(
 ) -> None:
     job = _valid_job(tmp_path)
     agent = job._trial_configs[0].agent
-    agent.name = "AutoResearchExamAgent"
+    agent.name = "autoresearchexam-terminus"
     agent.import_path = None
     monkeypatch.setattr(
         "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
@@ -170,7 +170,7 @@ async def test_plugin_rejects_conflicting_agent_settings_without_overwriting_the
 ) -> None:
     job = _valid_job(tmp_path)
     agent = job._trial_configs[0].agent
-    agent.name = "AutoResearchExamAgent"
+    agent.name = "autoresearchexam-terminus"
     agent.import_path = None
     agent.kwargs = {setting: agent_value}
     plugin = TimedWindowPlugin(
@@ -182,7 +182,7 @@ async def test_plugin_rejects_conflicting_agent_settings_without_overwriting_the
     with pytest.raises(ValueError, match=f"Conflicting {setting}"):
         await plugin.on_job_start(job)
 
-    assert agent.name == "AutoResearchExamAgent"
+    assert agent.name == "autoresearchexam-terminus"
     assert agent.import_path is None
     assert agent.kwargs == {setting: agent_value}
 
@@ -205,7 +205,7 @@ async def test_failed_preflight_does_not_mutate_agent_configuration(
     with pytest.raises(ValueError, match="tests/Dockerfile"):
         await plugin.on_job_start(job)
 
-    assert agent.name == "AutoResearchExamAgent"
+    assert agent.name == "autoresearchexam-terminus"
     assert agent.import_path is None
     assert agent.kwargs == {"min_time_per_iteration": 0}
 

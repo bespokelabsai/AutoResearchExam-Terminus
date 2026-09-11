@@ -14,7 +14,7 @@ from harbor_autoresearch.agent import AutoResearchExamAgent
 
 
 def test_agent_uses_the_public_release_name() -> None:
-    assert agent_module.AutoResearchExamAgent.name() == "AutoResearchExamAgent"
+    assert agent_module.AutoResearchExamAgent.name() == "autoresearchexam-terminus"
     assert agent_module.AutoResearchExamAgent.import_path() == (
         "harbor_autoresearch.agent:AutoResearchExamAgent"
     )

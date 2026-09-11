@@ -44,7 +44,7 @@ def test_trial_constructs_against_the_supported_harbor_release(
         task=task_config,
         trials_dir=tmp_path / "trials",
         agent=AgentConfig(
-            name="AutoResearchExamAgent",
+            name="autoresearchexam-terminus",
             import_path="harbor_autoresearch.agent:AutoResearchExamAgent",
             model_name="openai/test-model",
             kwargs={

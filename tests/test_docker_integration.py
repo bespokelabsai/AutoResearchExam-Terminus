@@ -134,7 +134,7 @@ def test_harbor_cli_runs_one_timed_window_with_local_docker(tmp_path: Path) -> N
         "--jobs-dir",
         str(jobs_dir),
         "--agent",
-        "AutoResearchExamAgent",
+        "autoresearchexam-terminus",
         "--model",
         "openai/test-model",
         "--env",
