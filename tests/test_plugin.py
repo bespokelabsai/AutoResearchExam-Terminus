@@ -182,7 +182,32 @@ async def test_plugin_rejects_conflicting_agent_settings_without_overwriting_the
     with pytest.raises(ValueError, match=f"Conflicting {setting}"):
         await plugin.on_job_start(job)
 
+    assert agent.name == "AutoResearchExamAgent"
+    assert agent.import_path is None
     assert agent.kwargs == {setting: agent_value}
+
+
+@pytest.mark.asyncio
+async def test_failed_preflight_does_not_mutate_agent_configuration(
+    tmp_path: Path,
+) -> None:
+    job = _valid_job(tmp_path)
+    agent = job._trial_configs[0].agent
+    task_dir = job._trial_configs[0].task.path
+    assert task_dir is not None
+    (task_dir / "tests" / "Dockerfile").unlink()
+    plugin = TimedWindowPlugin(
+        max_iterations=2,
+        max_duration_seconds=120,
+        max_turns=2_000,
+    )
+
+    with pytest.raises(ValueError, match="tests/Dockerfile"):
+        await plugin.on_job_start(job)
+
+    assert agent.name == "AutoResearchExamAgent"
+    assert agent.import_path is None
+    assert agent.kwargs == {"min_time_per_iteration": 0}
 
 
 def test_plugin_rejects_unknown_settings() -> None:

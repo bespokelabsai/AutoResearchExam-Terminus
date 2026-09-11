@@ -71,6 +71,24 @@ harbor run \
 Use `-e modal` to run the task on Modal. Replace the task name and model with the
 ones you want to use.
 
+## Run all tasks
+
+Remove the `-i` task filter to run every task in the downloaded dataset:
+
+```bash
+harbor run \
+  -p tasks \
+  -a AutoResearchExamAgent \
+  -m openai/gpt-5.6-sol \
+  -e docker \
+  --plugin autoresearch-exam \
+  --pk max_iterations=500 \
+  --pk max_duration_seconds=86400 \
+  --pk min_time_per_iteration=0 \
+  --pk max_turns=2000 \
+  --pk reasoning_effort=high
+```
+
 The plugin settings are:
 
 | Setting | Meaning |
@@ -80,6 +98,9 @@ The plugin settings are:
 | `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. Zero permits an immediate submission. |
 | `max_turns` | Maximum model turns shared by the full agent session. |
 | `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
+| `output_token_budget` | Maximum output tokens shared by the full agent session. |
+| `auto_summarization` | Whether to summarize the session between experiments. |
+| `use_responses_api` | Whether supported OpenAI models use the Responses API. |
 
 The total research window includes agent work, artifact collection, public
 validation, private testing, and harness work. One experiment can use all the

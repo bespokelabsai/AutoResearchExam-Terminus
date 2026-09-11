@@ -29,7 +29,7 @@ from harbor_autoresearch.trial import (
 )
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _run_thread_offloads_inline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep unit tests deterministic where sandbox thread wakeups are unavailable."""
 
@@ -62,6 +62,7 @@ class _Environment:
 async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hides_it(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    _run_thread_offloads_inline: None,
 ) -> None:
     trial = object.__new__(TimedWindowTrial)
     trial_dir = tmp_path / "trial"
@@ -207,6 +208,7 @@ async def test_trial_selects_private_score_by_earliest_best_intermediate_and_hid
 async def test_global_deadline_forces_one_submission_and_starts_no_later_phase(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    _run_thread_offloads_inline: None,
 ) -> None:
     trial = object.__new__(TimedWindowTrial)
     trial.paths = TrialPaths(tmp_path / "trial")
@@ -378,6 +380,7 @@ async def test_each_grader_gets_a_fresh_staged_context_and_output_directory(
 @pytest.mark.asyncio
 async def test_artifact_seal_rejects_symlinks_without_touching_target(
     tmp_path: Path,
+    _run_thread_offloads_inline: None,
 ) -> None:
     trial = object.__new__(TimedWindowTrial)
     iteration_dir = tmp_path / "iteration"
@@ -398,6 +401,7 @@ async def test_artifact_seal_rejects_symlinks_without_touching_target(
 @pytest.mark.asyncio
 async def test_sealed_archive_survives_staging_directory_cleanup(
     tmp_path: Path,
+    _run_thread_offloads_inline: None,
 ) -> None:
     trial = object.__new__(TimedWindowTrial)
     iteration_dir = tmp_path / "iteration"
@@ -417,6 +421,7 @@ async def test_sealed_archive_survives_staging_directory_cleanup(
 @pytest.mark.asyncio
 async def test_mounted_convention_artifacts_are_copied_into_snapshot(
     tmp_path: Path,
+    _run_thread_offloads_inline: None,
 ) -> None:
     trial = object.__new__(TimedWindowTrial)
     trial.paths = TrialPaths(tmp_path / "trial")

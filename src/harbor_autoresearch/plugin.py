@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import shutil
 import tomllib
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -88,11 +89,13 @@ class TimedWindowPlugin:
         trial_configs = list(getattr(job, "_trial_configs", ()))
         if not trial_configs:
             raise ValueError("Timed-window jobs must contain at least one trial")
+        prepared_agents: list[tuple[Any, Any]] = []
         trial_tasks: list[tuple[Any, Task, TimedWindowConfig]] = []
         for config in trial_configs:
-            self._normalize_agent(config.agent)
-            self._apply_agent_overrides(config)
-            self._validate_trial_config(config)
+            prepared_agent = deepcopy(config.agent)
+            self._normalize_agent(prepared_agent)
+            self._apply_agent_overrides(prepared_agent)
+            self._validate_trial_config(config, agent=prepared_agent)
             download = job._task_download_results[config.task.get_task_id()]
             task = Task(
                 task_dir=download.path,
@@ -101,7 +104,8 @@ class TimedWindowPlugin:
                 disable_verification=config.verifier.disable,
             )
             self._validate_task(task)
-            window = self._window_config(config)
+            window = self._window_config(config, agent=prepared_agent)
+            prepared_agents.append((config.agent, prepared_agent))
             trial_tasks.append((config, task, window))
 
         if backend == "modal":
@@ -122,6 +126,11 @@ class TimedWindowPlugin:
             import_path=job.config.environment.import_path,
         )
         self._validate_storage(backend, trial_tasks, Path(job.job_dir))
+
+        for agent, prepared_agent in prepared_agents:
+            agent.name = prepared_agent.name
+            agent.import_path = prepared_agent.import_path
+            agent.kwargs = prepared_agent.kwargs
 
         original_create = Trial.__dict__["create"]
         plugin = self
@@ -186,8 +195,13 @@ class TimedWindowPlugin:
         self._original_job_run = None
         self._installed_job_run = None
 
-    def _window_config(self, trial_config: Any) -> TimedWindowConfig:
-        kwargs = trial_config.agent.kwargs
+    def _window_config(
+        self,
+        trial_config: Any,
+        *,
+        agent: Any | None = None,
+    ) -> TimedWindowConfig:
+        kwargs = (agent or trial_config.agent).kwargs
         minimum = self.min_time_per_iteration
         if minimum is None:
             minimum = kwargs.get("min_time_per_iteration", 0)
@@ -199,8 +213,8 @@ class TimedWindowPlugin:
             auto_summarize=auto_summarize,
         )
 
-    def _apply_agent_overrides(self, trial_config: Any) -> None:
-        kwargs = trial_config.agent.kwargs
+    def _apply_agent_overrides(self, agent: Any) -> None:
+        kwargs = agent.kwargs
         overrides = {
             "min_time_per_iteration": self.min_time_per_iteration,
             "max_turns": self.max_turns,
@@ -303,7 +317,7 @@ class TimedWindowPlugin:
         return math.ceil(window.max_duration_seconds + finalization_allowance)
 
     @staticmethod
-    def _validate_trial_config(config: Any) -> None:
+    def _validate_trial_config(config: Any, *, agent: Any | None = None) -> None:
         validate_backend(TimedWindowPlugin._backend_name(config.environment))
         if config.source_trial is not None:
             raise ValueError("Timed-window runs do not support regrade trials")
@@ -318,7 +332,7 @@ class TimedWindowPlugin:
         if config.artifacts:
             raise ValueError("Artifacts must be declared by the task")
 
-        agent = config.agent
+        agent = agent or config.agent
         if agent.name != _AGENT_NAME or agent.import_path != _AGENT_IMPORT_PATH:
             raise ValueError(f"Timed-window runs require agent {_AGENT_NAME!r}")
         if not agent.model_name:
