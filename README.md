@@ -42,20 +42,18 @@ harbor plugins list
 
 ## Download the tasks
 
-Clone AutoResearchExam into the local `tasks` directory:
+The dataset is public on Harbor Hub. Harbor downloads and caches each selected
+task when a run starts. To download the full dataset into Harbor's cache first:
 
 ```bash
-git clone https://github.com/bespokelabsai/AutoResearchExam.git tasks
+harbor dataset download bespokelabs/autoresearch-exam@latest --cache
 ```
-
-Each task is a folder inside `tasks/`. The command below selects one folder by
-name.
 
 ## Run one task
 
 ```bash
 harbor run \
-  -p tasks \
+  -d bespokelabs/autoresearch-exam \
   -i cpu-decoder-graph-executor \
   -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
@@ -73,11 +71,11 @@ ones you want to use.
 
 ## Run all tasks
 
-Remove the `-i` task filter to run every task in the downloaded dataset:
+Remove the `-i` task filter to run every task in the Harbor Hub dataset:
 
 ```bash
 harbor run \
-  -p tasks \
+  -d bespokelabs/autoresearch-exam \
   -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
   -e docker \
