@@ -8,36 +8,15 @@ private test result stays outside the agent environment.
 
 The harness supports local Docker and Modal.
 
-## Requirements
-
-You need Python 3.12 and Harbor 0.22. For local runs, install Docker and make
-sure its service is running. For Modal runs, sign in to Modal before starting a
-job.
-
-Your model provider API key must be available in the environment where you run
-Harbor. See the Harbor documentation for the environment variable required by
-your provider.
-
 ## Install
 
-Clone this repository and install it in your Harbor environment:
+Clone this repository and create its environment with
+[uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/bespokelabsai/AutoResearchExam-Terminus.git
 cd AutoResearchExam-Terminus
-pip install .
-```
-
-Install the Modal support when you plan to use Modal:
-
-```bash
-pip install ".[modal]"
-```
-
-Check that Harbor can find the plugin:
-
-```bash
-harbor plugins list
+uv sync --python 3.12 --extra modal
 ```
 
 ## Download the tasks
@@ -46,13 +25,13 @@ The dataset is public on Harbor Hub. Harbor downloads and caches each selected
 task when a run starts. To download the full dataset into Harbor's cache first:
 
 ```bash
-harbor dataset download bespokelabs/autoresearch-exam@latest --cache
+uv run harbor dataset download bespokelabs/autoresearch-exam@latest --cache
 ```
 
 ## Run one task
 
 ```bash
-harbor run \
+uv run harbor run \
   -d bespokelabs/autoresearch-exam \
   -i cpu-decoder-graph-executor \
   -a autoresearchexam-terminus \
@@ -74,7 +53,7 @@ ones you want to use.
 Remove the `-i` task filter to run every task in the Harbor Hub dataset:
 
 ```bash
-harbor run \
+uv run harbor run \
   -d bespokelabs/autoresearch-exam \
   -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
@@ -150,7 +129,7 @@ jq '{public_best_score, selected_iteration, selected_test_score, scores}' \
 
 The harness uses private host permissions for result files that contain private
 scores. It never mounts those files into the agent environment. You can also use
-`harbor view` with the jobs directory to open Harbor's result viewer.
+`uv run harbor view` with the jobs directory to open Harbor's result viewer.
 
 ## Task contract
 
