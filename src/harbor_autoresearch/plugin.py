@@ -23,15 +23,17 @@ from .config import TimedWindowConfig, validate_backend
 
 _AGENT_NAME = "autoresearchexam-terminus"
 _AGENT_IMPORT_PATH = "harbor_autoresearch.agent:AutoResearchExamAgent"
+_LLM_BACKEND = "litellm"
 _MODAL_STORAGE_LIMIT_MB = 512 * 1024
 _MODAL_MAX_SANDBOX_TIMEOUT_SECONDS = 24 * 60 * 60
 # The final accepted submission can outlive the research deadline while its two
 # verifiers finish. Reserve both timeouts plus artifact collection and archiving.
 _ARTIFACT_ALLOWANCE_SECONDS = 10 * 60
-# Static preflight reserves a small host allowance per retained iteration. The
-# actual artifact size is unknowable before execution, so the trial remains
-# responsible for checking free space before each snapshot.
+# Static preflight reserves a small host allowance per retained iteration, up
+# to the previous 500-iteration maximum. Artifact size is unknowable before
+# execution, so the trial also checks free space before every snapshot.
 _RETAINED_ITERATION_ALLOWANCE_MB = 64
+_MAX_RETAINED_ARTIFACT_PREFLIGHT_MB = 500 * _RETAINED_ITERATION_ALLOWANCE_MB
 _active_plugin: TimedWindowPlugin | None = None
 
 
@@ -44,7 +46,7 @@ class TimedWindowPlugin:
         max_iterations: int,
         max_duration_seconds: int,
         min_time_per_iteration: int | None = None,
-        max_turns: int | None = None,
+        max_turns: int = 50_000,
         reasoning_effort: str | None = None,
         output_token_budget: int | None = None,
         auto_summarization: bool = True,
@@ -52,11 +54,10 @@ class TimedWindowPlugin:
         self.max_iterations = max_iterations
         self.max_duration_seconds = max_duration_seconds
         self.min_time_per_iteration = min_time_per_iteration
-        if max_turns is not None:
-            if isinstance(max_turns, bool) or not isinstance(max_turns, int):
-                raise TypeError("max_turns must be an integer")
-            if not 1 <= max_turns <= 50_000:
-                raise ValueError("max_turns must be between 1 and 50000")
+        if isinstance(max_turns, bool) or not isinstance(max_turns, int):
+            raise TypeError("max_turns must be an integer")
+        if not 1 <= max_turns <= 50_000:
+            raise ValueError("max_turns must be between 1 and 50000")
         self.max_turns = max_turns
         self.reasoning_effort = reasoning_effort
         self.output_token_budget = output_token_budget
@@ -230,7 +231,14 @@ class TimedWindowPlugin:
         kwargs = agent.kwargs
         if "max_turns" in kwargs:
             raise ValueError("max_turns must be supplied through plugin kwargs")
+        for legacy_name in ("max_episodes", "episodes"):
+            if legacy_name in kwargs:
+                raise ValueError(
+                    f"{legacy_name} is not supported; use max_turns through "
+                    "plugin kwargs"
+                )
         overrides = {
+            "llm_backend": _LLM_BACKEND,
             "min_time_per_iteration": self.min_time_per_iteration,
             "max_turns": self.max_turns,
             "reasoning_effort": self.reasoning_effort,
@@ -407,7 +415,13 @@ class TimedWindowPlugin:
                         / (window.min_time_per_iteration * 60)
                     ),
                 )
-            required_mb += possible_iterations * _RETAINED_ITERATION_ALLOWANCE_MB
+            retained_artifact_mb = (
+                possible_iterations * _RETAINED_ITERATION_ALLOWANCE_MB
+            )
+            required_mb += min(
+                retained_artifact_mb,
+                _MAX_RETAINED_ARTIFACT_PREFLIGHT_MB,
+            )
 
         existing = job_dir
         while not existing.exists() and existing != existing.parent:

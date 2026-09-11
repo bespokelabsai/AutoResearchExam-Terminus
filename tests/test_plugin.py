@@ -87,6 +87,7 @@ def test_plugin_defaults_iteration_minimum_to_zero() -> None:
     window = plugin._window_config(trial_config)
 
     assert plugin.auto_summarization is True
+    assert plugin.max_turns == 50_000
     assert plugin.output_token_budget is None
     assert window.min_time_per_iteration == 0
     assert window.auto_summarize is True
@@ -111,6 +112,8 @@ async def test_plugin_accepts_and_preserves_the_public_agent_name(
     try:
         assert agent.name == "autoresearchexam-terminus"
         assert agent.import_path == ("harbor_autoresearch.agent:AutoResearchExamAgent")
+        assert agent.kwargs["llm_backend"] == "litellm"
+        assert agent.kwargs["max_turns"] == 50_000
         assert agent.kwargs["auto_summarization"] is True
     finally:
         await plugin.on_job_end(object())
@@ -141,6 +144,7 @@ async def test_plugin_forwards_all_public_agent_settings(
     await plugin.on_job_start(job)
     try:
         assert agent.kwargs == {
+            "llm_backend": "litellm",
             "min_time_per_iteration": 0,
             "max_turns": 2_000,
             "reasoning_effort": "high",
@@ -225,6 +229,36 @@ async def test_max_turns_must_be_supplied_through_plugin_kwargs(
 
 
 @pytest.mark.asyncio
+async def test_plugin_rejects_non_litellm_backend(
+    tmp_path: Path,
+) -> None:
+    job = _valid_job(tmp_path)
+    job._trial_configs[0].agent.kwargs["llm_backend"] = "custom"
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
+
+    with pytest.raises(ValueError, match="Conflicting llm_backend"):
+        await plugin.on_job_start(job)
+
+    assert plugin.is_installed is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_name", ["max_episodes", "episodes"])
+async def test_legacy_turn_limits_cannot_bypass_plugin_cap(
+    tmp_path: Path,
+    legacy_name: str,
+) -> None:
+    job = _valid_job(tmp_path)
+    job._trial_configs[0].agent.kwargs[legacy_name] = 50_001
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
+
+    with pytest.raises(ValueError, match=f"{legacy_name}.*max_turns"):
+        await plugin.on_job_start(job)
+
+    assert plugin.is_installed is False
+
+
+@pytest.mark.asyncio
 async def test_failed_preflight_does_not_mutate_modal_configuration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -284,7 +318,7 @@ def test_plugin_rejects_nonpositive_max_turns_at_construction() -> None:
         )
 
 
-@pytest.mark.parametrize("value", [True, 1.5, "50000"])
+@pytest.mark.parametrize("value", [None, True, 1.5, "50000"])
 def test_plugin_rejects_noninteger_max_turns_at_construction(value: object) -> None:
     with pytest.raises(TypeError, match="max_turns must be an integer"):
         TimedWindowPlugin(
@@ -477,6 +511,29 @@ async def test_storage_preflight_checks_host_space_for_both_backends(
 
 
 @pytest.mark.asyncio
+async def test_storage_preflight_caps_static_artifact_reserve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = _valid_job(tmp_path, storage_mb=300)
+    monkeypatch.setattr(
+        "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(
+        "harbor_autoresearch.plugin.shutil.disk_usage",
+        lambda _: SimpleNamespace(free=32_300 * 1024 * 1024),
+    )
+    plugin = TimedWindowPlugin(max_iterations=5_000, max_duration_seconds=120)
+
+    await plugin.on_job_start(job)
+    try:
+        assert plugin.is_installed is True
+    finally:
+        await plugin.on_job_end(object())
+
+
+@pytest.mark.asyncio
 async def test_modal_host_estimate_does_not_multiply_remote_disk_by_iterations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -549,7 +606,9 @@ async def test_plugin_timing_is_injected_before_factory_builds_the_trial(
     assert result.window.min_time_per_iteration == 0
     assert result.window.auto_summarize is False
     assert trial_config.agent.kwargs == {
+        "llm_backend": "litellm",
         "min_time_per_iteration": 0,
+        "max_turns": 50_000,
         "auto_summarization": False,
     }
     await plugin.on_job_end(object())

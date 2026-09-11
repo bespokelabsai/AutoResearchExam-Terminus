@@ -94,7 +94,7 @@ The plugin settings are:
 | `max_iterations` | Maximum number of submitted experiments. The allowed range is 1 to 5000. |
 | `max_duration_seconds` | Total research window in seconds. |
 | `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. Zero permits an immediate submission. |
-| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. |
+| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
 | `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
 | `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
 | `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
