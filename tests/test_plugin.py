@@ -79,15 +79,17 @@ def _valid_job(
 def test_plugin_defaults_iteration_minimum_to_zero() -> None:
     trial_config = SimpleNamespace(
         agent=SimpleNamespace(
-            kwargs={"auto_summarization": False},
+            kwargs={},
         )
     )
     plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
 
     window = plugin._window_config(trial_config)
 
+    assert plugin.auto_summarization is True
+    assert plugin.output_token_budget is None
     assert window.min_time_per_iteration == 0
-    assert window.auto_summarize is False
+    assert window.auto_summarize is True
 
 
 @pytest.mark.asyncio
@@ -109,6 +111,7 @@ async def test_plugin_accepts_and_preserves_the_public_agent_name(
     try:
         assert agent.name == "autoresearchexam-terminus"
         assert agent.import_path == ("harbor_autoresearch.agent:AutoResearchExamAgent")
+        assert agent.kwargs["auto_summarization"] is True
     finally:
         await plugin.on_job_end(object())
 
@@ -133,7 +136,6 @@ async def test_plugin_forwards_all_public_agent_settings(
         reasoning_effort="high",
         output_token_budget=12_345,
         auto_summarization=False,
-        use_responses_api=True,
     )
 
     await plugin.on_job_start(job)
@@ -144,7 +146,6 @@ async def test_plugin_forwards_all_public_agent_settings(
             "reasoning_effort": "high",
             "output_token_budget": 12_345,
             "auto_summarization": False,
-            "use_responses_api": True,
         }
     finally:
         await plugin.on_job_end(object())
@@ -155,11 +156,9 @@ async def test_plugin_forwards_all_public_agent_settings(
     ("setting", "agent_value", "plugin_value"),
     [
         ("min_time_per_iteration", 1, 2),
-        ("max_turns", 5, 6),
         ("reasoning_effort", "medium", "high"),
         ("output_token_budget", 100, 200),
         ("auto_summarization", False, True),
-        ("use_responses_api", False, True),
     ],
 )
 async def test_plugin_rejects_conflicting_agent_settings_without_overwriting_them(
@@ -211,6 +210,21 @@ async def test_failed_preflight_does_not_mutate_agent_configuration(
 
 
 @pytest.mark.asyncio
+async def test_max_turns_must_be_supplied_through_plugin_kwargs(
+    tmp_path: Path,
+) -> None:
+    job = _valid_job(tmp_path)
+    agent = job._trial_configs[0].agent
+    agent.kwargs["max_turns"] = 2_000
+    plugin = TimedWindowPlugin(max_iterations=2, max_duration_seconds=120)
+
+    with pytest.raises(ValueError, match="max_turns.*plugin kwargs"):
+        await plugin.on_job_start(job)
+
+    assert plugin.is_installed is False
+
+
+@pytest.mark.asyncio
 async def test_failed_preflight_does_not_mutate_modal_configuration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -239,6 +253,44 @@ def test_plugin_rejects_unknown_settings() -> None:
             max_iterations=2,
             max_duration_seconds=120,
             unexpected_keyword=True,
+        )
+
+
+def test_plugin_rejects_max_turns_above_public_limit_at_construction() -> None:
+    with pytest.raises(ValueError, match="max_turns must be between 1 and 50000"):
+        TimedWindowPlugin(
+            max_iterations=2,
+            max_duration_seconds=120,
+            max_turns=50_001,
+        )
+
+
+def test_plugin_accepts_max_turns_at_public_limit() -> None:
+    plugin = TimedWindowPlugin(
+        max_iterations=2,
+        max_duration_seconds=120,
+        max_turns=50_000,
+    )
+
+    assert plugin.max_turns == 50_000
+
+
+def test_plugin_rejects_nonpositive_max_turns_at_construction() -> None:
+    with pytest.raises(ValueError, match="max_turns must be between 1 and 50000"):
+        TimedWindowPlugin(
+            max_iterations=2,
+            max_duration_seconds=120,
+            max_turns=0,
+        )
+
+
+@pytest.mark.parametrize("value", [True, 1.5, "50000"])
+def test_plugin_rejects_noninteger_max_turns_at_construction(value: object) -> None:
+    with pytest.raises(TypeError, match="max_turns must be an integer"):
+        TimedWindowPlugin(
+            max_iterations=2,
+            max_duration_seconds=120,
+            max_turns=value,
         )
 
 

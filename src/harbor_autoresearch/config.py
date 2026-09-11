@@ -26,8 +26,8 @@ class TimedWindowConfig:
                 raise TypeError(f"{field_name} must be an integer")
         if not isinstance(self.auto_summarize, bool):
             raise TypeError("auto_summarize must be a boolean")
-        if not 1 <= self.max_iterations <= 500:
-            raise ValueError("max_iterations must be between 1 and 500")
+        if not 1 <= self.max_iterations <= 5_000:
+            raise ValueError("max_iterations must be between 1 and 5000")
         if not 1 <= self.max_duration_seconds <= 172_800:
             raise ValueError("max_duration_seconds must be between 1 and 172800")
         if self.min_time_per_iteration < 0:

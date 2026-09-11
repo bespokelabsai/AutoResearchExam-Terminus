@@ -47,17 +47,20 @@ class TimedWindowPlugin:
         max_turns: int | None = None,
         reasoning_effort: str | None = None,
         output_token_budget: int | None = None,
-        auto_summarization: bool | None = None,
-        use_responses_api: bool | None = None,
+        auto_summarization: bool = True,
     ) -> None:
         self.max_iterations = max_iterations
         self.max_duration_seconds = max_duration_seconds
         self.min_time_per_iteration = min_time_per_iteration
+        if max_turns is not None:
+            if isinstance(max_turns, bool) or not isinstance(max_turns, int):
+                raise TypeError("max_turns must be an integer")
+            if not 1 <= max_turns <= 50_000:
+                raise ValueError("max_turns must be between 1 and 50000")
         self.max_turns = max_turns
         self.reasoning_effort = reasoning_effort
         self.output_token_budget = output_token_budget
         self.auto_summarization = auto_summarization
-        self.use_responses_api = use_responses_api
         self._original_create: Any = None
         self._installed_create: Any = None
         self._job: Any = None
@@ -225,13 +228,14 @@ class TimedWindowPlugin:
 
     def _apply_agent_overrides(self, agent: Any) -> None:
         kwargs = agent.kwargs
+        if "max_turns" in kwargs:
+            raise ValueError("max_turns must be supplied through plugin kwargs")
         overrides = {
             "min_time_per_iteration": self.min_time_per_iteration,
             "max_turns": self.max_turns,
             "reasoning_effort": self.reasoning_effort,
             "output_token_budget": self.output_token_budget,
             "auto_summarization": self.auto_summarization,
-            "use_responses_api": self.use_responses_api,
         }
         for name, value in overrides.items():
             if value is None:

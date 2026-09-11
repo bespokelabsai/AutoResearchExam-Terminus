@@ -77,6 +77,15 @@ def test_agent_exposes_user_timing_and_shared_budget_state(monkeypatch) -> None:
     assert agent.can_continue_autoresearch is True
 
 
+def test_agent_defaults_to_unbounded_output_and_auto_summarization(monkeypatch) -> None:
+    agent = _make_agent(monkeypatch, max_turns=10)
+    agent._chat = SimpleNamespace(total_output_tokens=1_000_000_000)
+
+    assert agent.auto_summarization is True
+    assert agent.budget_tripped is False
+    assert agent.can_continue is True
+
+
 def test_agent_returns_the_structured_submission_not_confirmation(monkeypatch) -> None:
     agent = _make_agent(monkeypatch)
     agent._trajectory_steps = [

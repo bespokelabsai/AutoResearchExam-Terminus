@@ -5,12 +5,12 @@ from harbor_autoresearch.config import TimedWindowConfig, validate_backend
 
 def test_accepts_user_selected_timing_at_supported_boundaries() -> None:
     config = TimedWindowConfig(
-        max_iterations=500,
+        max_iterations=5_000,
         max_duration_seconds=172_800,
         min_time_per_iteration=0,
     )
 
-    assert config.max_iterations == 500
+    assert config.max_iterations == 5_000
     assert config.max_duration_seconds == 172_800
     assert config.min_time_per_iteration == 0
     assert config.auto_summarize is True
@@ -20,7 +20,7 @@ def test_accepts_user_selected_timing_at_supported_boundaries() -> None:
     ("field", "value"),
     [
         ("max_iterations", 0),
-        ("max_iterations", 501),
+        ("max_iterations", 5_001),
         ("max_duration_seconds", 0),
         ("max_duration_seconds", 172_801),
         ("min_time_per_iteration", -1),
