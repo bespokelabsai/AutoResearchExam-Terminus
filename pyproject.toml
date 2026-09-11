@@ -32,9 +32,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/bespokelabsai/AutoresearchExamHarness"
-Repository = "https://github.com/bespokelabsai/AutoresearchExamHarness.git"
-Issues = "https://github.com/bespokelabsai/AutoresearchExamHarness/issues"
+Homepage = "https://github.com/bespokelabsai/AutoResearchExam-Terminus"
+Repository = "https://github.com/bespokelabsai/AutoResearchExam-Terminus.git"
+Issues = "https://github.com/bespokelabsai/AutoResearchExam-Terminus/issues"
 
 [project.entry-points."harbor.plugins"]
 autoresearch-exam = "harbor_autoresearch.plugin:TimedWindowPlugin"

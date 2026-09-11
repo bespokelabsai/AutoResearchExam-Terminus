@@ -23,8 +23,8 @@ your provider.
 Clone this repository and install it in your Harbor environment:
 
 ```bash
-git clone https://github.com/bespokelabsai/AutoresearchExamHarness.git
-cd AutoresearchExamHarness
+git clone https://github.com/bespokelabsai/AutoResearchExam-Terminus.git
+cd AutoResearchExam-Terminus
 pip install .
 ```
 
