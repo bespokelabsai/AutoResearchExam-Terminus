@@ -55,7 +55,7 @@ uv run harbor run \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
   --pk max_turns=50000 \
-  --pk reasoning_effort=high
+  --pk reasoning_effort=max
 ```
 
 Replace the task name and model with the ones you want to use.
@@ -76,7 +76,7 @@ uv run harbor run \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
   --pk max_turns=50000 \
-  --pk reasoning_effort=high
+  --pk reasoning_effort=max
 ```
 
 The total research window (`max_duration_seconds`) includes agent work, public
@@ -153,7 +153,7 @@ The harness settings are:
 | `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
 | `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
 | `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
-| `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
+| `reasoning_effort` | Reasoning effort sent to the model provider. The default is `max`, as used for Sol and Astra in our benchmark runs. The provider must support the selected value. |
 | `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
 | `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
 
