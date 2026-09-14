@@ -1,0 +1,26 @@
+{
+  "configuration": {
+    "task_name": "cpu-llm-decode-throughput",
+    "max_duration_seconds": 100
+  },
+  "scores": [
+    {
+      "iteration": 1,
+      "wall_elapsed_seconds": 20,
+      "intermediate_score": 0.4,
+      "test_raw_metric": 35
+    },
+    {
+      "iteration": 2,
+      "wall_elapsed_seconds": 60,
+      "intermediate_score": 0.6,
+      "test_raw_metric": 18
+    },
+    {
+      "iteration": 3,
+      "wall_elapsed_seconds": 80,
+      "intermediate_score": 0.6,
+      "test_raw_metric": 69
+    }
+  ]
+}

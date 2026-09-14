@@ -1,25 +1,33 @@
 # AutoResearchExam Harness
 
-This package adds a timed research window to Harbor for the
-[AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam) tasks. One
+This is the official Terminus harness for
+[AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam).
+It adds a timed research window to Harbor. One
 agent session can submit many experiments during the window. The agent receives
 the public validation result and the remaining time after each submission. The
 private test result stays outside the agent environment.
 
-The harness supports local Docker and Modal.
+The benchmark budget and AUARC horizon are 24 hours (86400 seconds) by default.
+The examples below use local Docker.
+
+To use Claude Code, Codex, or another harness, follow the
+[custom harness guide](scripts/custom_harness.md). The AUARC script accepts
+timestamped scores from any harness.
 
 ## Install
 
-Clone this repository and create its environment with
-[uv](https://docs.astral.sh/uv/):
+Install [uv](https://docs.astral.sh/uv/), start Docker, and configure your model
+provider's credentials (`OPENAI_API_KEY` for the OpenAI example below).
+Docker's default preflight checks for 32000 MiB of free space per trial for
+retained artifacts, plus that task's storage requirement, summed across all
+selected trials on the jobs host.
+Clone this repository and create its Python 3.12 environment:
 
 ```bash
 git clone https://github.com/bespokelabsai/AutoResearchExam-Terminus.git
 cd AutoResearchExam-Terminus
 uv sync --python 3.12 --extra modal
 ```
-
-Add `--extra tinker` when using the Tinker LLM backend.
 
 ## Download the tasks
 
@@ -32,6 +40,9 @@ uv run harbor dataset download bespokelabs/autoresearch-exam@latest --cache
 
 ## Run one task
 
+`harbor run` starts the full research and grading loop. `trial.py` is its
+internal implementation.
+
 ```bash
 uv run harbor run \
   -d bespokelabs/autoresearch-exam \
@@ -40,24 +51,19 @@ uv run harbor run \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
-  --pk max_iterations=500 \
+  --pk max_iterations=5000 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --pk max_turns=2000 \
+  --pk max_turns=50000 \
   --pk reasoning_effort=high
 ```
 
-Use `-e modal` to run the task on Modal. Replace the task name and model with the
-ones you want to use.
-
-The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
-task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
-for both the agent and verifier containers. Modal runs use the original task and
-request the GPU from Modal.
+Replace the task name and model with the ones you want to use.
 
 ## Run all tasks
 
-Remove the `-i` task filter to run every task in the Harbor Hub dataset:
+Remove the `-i` task filter to run every task in the Harbor Hub dataset.
+Check the [disk prerequisite](#install) for the full set of trials:
 
 ```bash
 uv run harbor run \
@@ -66,31 +72,17 @@ uv run harbor run \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
-  --pk max_iterations=500 \
+  --pk max_iterations=5000 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --pk max_turns=2000 \
+  --pk max_turns=50000 \
   --pk reasoning_effort=high
 ```
 
-The harness settings are:
-
-| Setting | Meaning |
-| --- | --- |
-| `max_iterations` | Maximum number of submitted experiments. The allowed range is 1 to 5000. |
-| `max_duration_seconds` | Total research window in seconds. |
-| `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
-| `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
-| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
-| `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
-| `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
-| `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
-
-An agent-level `--ak llm_backend=tinker` setting is also preserved when the
-plugin setting is omitted.
-
 The total research window (`max_duration_seconds`) includes agent work, public
-validation, and private testing.
+validation, and private testing. The experiment or turn limit can end a run
+earlier. The default limits are 5000 experiments and 50000 turns, with no output
+token budget. Task build and grader timeouts are separate limits.
 
 After each submission, the agent receives:
 
@@ -100,13 +92,8 @@ After each submission, the agent receives:
 
 The harness runs the private test for every accepted submission and records the
 private result, but it never sends the private score or private test output to
-the agent. The experiment with the highest public score is selected as the final
-score and uses the private score for that same experiment as the final reward.
-
-Local Docker can use a research window of up to 172800 seconds. Modal limits a
-sandbox to 86400 seconds. A Modal run must also leave enough time for artifact
-collection and the final public and private graders, so use a research window
-shorter than 86400 seconds.
+the agent. It selects the checkpoint with the highest public validation reward
+and reports the private test reward for that same checkpoint.
 
 ## Results
 
@@ -124,17 +111,18 @@ directory with these files:
 
 ## Compute AUARC
 
-Use the included script with a trial's `summary.json` file:
+Compute AUARC on final benchmark rewards. The default command converts saved
+raw test metrics automatically, using the task name in the summary:
 
 ```bash
 uv run python scripts/compute_auarc.py \
-  jobs/<job>/<trial>/autoresearch/summary.json \
-  --task-name cpu-llm-decode-throughput
+  jobs/<job>/<trial>/autoresearch/summary.json
 ```
 
-Use the task's directory name for `--task-name`. New summaries save this name,
-so the option can then be omitted. To compute final hidden-test AUARC for every
-task under a jobs directory and their equal-weight mean:
+For an older or custom summary without a saved task name,
+pass `--task-name` with that run's task directory name. To compute final
+hidden-test AUARC for every task under a jobs directory and their equal-weight
+mean:
 
 ```bash
 uv run python scripts/compute_auarc.py jobs/<job> --all
@@ -142,8 +130,9 @@ uv run python scripts/compute_auarc.py jobs/<job> --all
 
 The 29 final-panel difficulty mappings, canonical IDs, and reward names are saved
 in `scripts/reward_maps.json`. We use these mappings to compute normalised rewards
-before computing AUARC. Pass `--plain` only to reproduce AUARC from the
-grader-reported rewards without applying those mappings.
+before computing AUARC. Some task graders use different reward maps.
+`--plain` uses `test_score` unchanged; it is sufficient for benchmark scoring
+when those values already contain the final benchmark rewards.
 
 The command prints JSON with hidden test AUARC at these blog time points:
 
@@ -152,3 +141,33 @@ The command prints JSON with hidden test AUARC at these blog time points:
 * 4 hours
 * 12 hours
 * 24 hours
+
+## Settings
+
+The harness settings are:
+
+| Setting | Meaning |
+| --- | --- |
+| `max_iterations` | Maximum number of submitted experiments. The default is 5000. The allowed range is 1 to 5000. |
+| `max_duration_seconds` | Total research window in seconds. The default is 86400 (24 hours). |
+| `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
+| `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
+| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
+| `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
+| `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
+| `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
+
+An agent-level `--ak llm_backend=tinker` setting is also preserved when the
+plugin setting is omitted.
+
+Add `--extra tinker` when using the Tinker LLM backend.
+
+For a 22-hour Modal run of this CPU example, replace `-e docker` with
+`-e modal` and set `--pk max_duration_seconds=79200`. This also sets a 22-hour
+AUARC horizon and leaves room before its
+[24-hour sandbox timeout](https://modal.com/docs/guide/sandboxes#timeouts).
+
+The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
+task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
+for both the agent and verifier containers. Modal runs use the original task and
+request the GPU from Modal.
