@@ -151,8 +151,9 @@ uv run python scripts/compute_auarc.py jobs/<job> --all
 
 The 29 final-panel difficulty mappings, canonical IDs, and reward names are saved
 in `scripts/reward_maps.json`. We use these mappings to compute normalised rewards
-before computing AUARC. Pass `--plain` only to reproduce AUARC from the
-grader-reported rewards without applying those mappings.
+before computing AUARC. Some task graders use different reward maps.
+`--plain` uses `test_score` unchanged; it is sufficient for benchmark scoring
+when those values already contain the final benchmark rewards.
 
 The command prints JSON with hidden test AUARC at these blog time points:
 

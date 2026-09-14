@@ -67,8 +67,14 @@ python3 scripts/compute_auarc.py scripts/custom_harness_summary.json --plain
 
 The first command uses `reward_maps.json` to turn each private raw metric into
 the benchmark's difficulty-adjusted reward. Its final AUARC is
-`0.4666666666666666`. The second uses `test_score` directly and returns `0.48`.
-Use the first mode for official benchmark scoring. `--plain` skips those maps.
+approximately 0.467. The second uses `test_score` directly and returns `0.48`.
+Task grader rewards do not always use the final benchmark scale. For example,
+`budgeted-imputation-mcar50` gives about 0.333 for a raw R² of 0.15, while the
+benchmark map gives about 0.313.
+
+Use the default mode for raw task metrics. If `test_score` already contains the
+final benchmark reward, `--plain` computes AUARC without `reward_maps.json`.
+Never put an already mapped reward in `test_raw_metric`.
 
 AUARC is the time average of the private reward of the best public checkpoint
 so far. Report test performance, but select checkpoints solely by validation.
