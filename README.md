@@ -55,6 +55,9 @@ uv run harbor run \
 
 Replace the task name and model with the ones you want to use.
 
+For Modal, use a shorter run, such as 22 hours for this CPU example, to leave
+room before its [24-hour sandbox timeout](https://modal.com/docs/guide/sandboxes#timeouts).
+
 The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
 task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
 for both the agent and verifier containers. Modal runs use the original task and
