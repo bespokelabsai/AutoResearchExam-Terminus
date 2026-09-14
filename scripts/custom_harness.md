@@ -43,8 +43,8 @@ Write one JSON file per run. Start with
 | `configuration.max_duration_seconds` | The full research budget in seconds, even if the agent stops early. |
 | `configuration.task_name` | The task directory name, required for official scoring unless passed as `--task-name`. |
 | `scores[].wall_elapsed_seconds` | Seconds since the research window began, recorded after artifact collection and both graders finish. |
-| `scores[].intermediate_score` | Public validation reward. Higher is better. Use the grader's reward, not a raw loss or error. |
-| `scores[].test_score` | Optional private grader reward. Needed only for rows without a raw metric, as described below. |
+| `scores[].intermediate_score` | Public grader's `/logs/verifier/reward.txt`. Higher is better. Use this reward, not a raw loss or error. |
+| `scores[].test_score` | Optional private grader's `/logs/verifier/reward.txt`. Needed only for rows without a raw metric, as described below. |
 | `scores[].test_raw_metric` | Private grader's `metric` from `/logs/verifier/metric.json`. Used for official scoring. |
 
 Default mode needs a finite `test_raw_metric` for every row, including

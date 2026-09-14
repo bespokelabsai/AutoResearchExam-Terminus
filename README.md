@@ -28,8 +28,6 @@ cd AutoResearchExam-Terminus
 uv sync --python 3.12 --extra modal
 ```
 
-Add `--extra tinker` when using the Tinker LLM backend.
-
 ## Download the tasks
 
 The dataset is public on Harbor Hub. Harbor downloads and caches each selected
@@ -61,14 +59,6 @@ uv run harbor run \
 
 Replace the task name and model with the ones you want to use.
 
-For Modal, use a shorter run, such as 22 hours for this CPU example, to leave
-room before its [24-hour sandbox timeout](https://modal.com/docs/guide/sandboxes#timeouts).
-
-The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
-task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
-for both the agent and verifier containers. Modal runs use the original task and
-request the GPU from Modal.
-
 ## Run all tasks
 
 Remove the `-i` task filter to run every task in the Harbor Hub dataset:
@@ -87,22 +77,6 @@ uv run harbor run \
   --pk reasoning_effort=high
 ```
 
-The harness settings are:
-
-| Setting | Meaning |
-| --- | --- |
-| `max_iterations` | Maximum number of submitted experiments. The default is 5000. The allowed range is 1 to 5000. |
-| `max_duration_seconds` | Total research window in seconds. The default is 86400 (24 hours). |
-| `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
-| `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
-| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
-| `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
-| `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
-| `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
-
-An agent-level `--ak llm_backend=tinker` setting is also preserved when the
-plugin setting is omitted.
-
 The total research window (`max_duration_seconds`) includes agent work, public
 validation, and private testing. The experiment or turn limit can end a run
 earlier. The default limits are 5000 experiments and 50000 turns, with no output
@@ -116,8 +90,8 @@ After each submission, the agent receives:
 
 The harness runs the private test for every accepted submission and records the
 private result, but it never sends the private score or private test output to
-the agent. The experiment with the highest public score is selected as the final
-score and uses the private score for that same experiment as the final reward.
+the agent. It selects the checkpoint with the highest public validation reward
+and reports the private test reward for that same checkpoint.
 
 ## Results
 
@@ -165,3 +139,31 @@ The command prints JSON with hidden test AUARC at these blog time points:
 * 4 hours
 * 12 hours
 * 24 hours
+
+## Settings
+
+The harness settings are:
+
+| Setting | Meaning |
+| --- | --- |
+| `max_iterations` | Maximum number of submitted experiments. The default is 5000. The allowed range is 1 to 5000. |
+| `max_duration_seconds` | Total research window in seconds. The default is 86400 (24 hours). |
+| `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
+| `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
+| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
+| `reasoning_effort` | Reasoning effort sent to the model provider. The provider must support the selected value. |
+| `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
+| `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
+
+An agent-level `--ak llm_backend=tinker` setting is also preserved when the
+plugin setting is omitted.
+
+Add `--extra tinker` when using the Tinker LLM backend.
+
+For Modal, use a shorter run, such as 22 hours for this CPU example, to leave
+room before its [24-hour sandbox timeout](https://modal.com/docs/guide/sandboxes#timeouts).
+
+The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
+task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
+for both the agent and verifier containers. Modal runs use the original task and
+request the GPU from Modal.
