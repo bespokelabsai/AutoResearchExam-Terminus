@@ -36,7 +36,7 @@ early. Record the actual runtime and stop reason separately.
 
 Write one JSON file per run. Start with
 [`custom_harness_summary.json`](custom_harness_summary.json), a synthetic
-100-second example. It works with both commands below.
+100-second example for the default command below.
 
 | Field | Value |
 | --- | --- |
@@ -44,11 +44,12 @@ Write one JSON file per run. Start with
 | `configuration.task_name` | The task directory name, required for official scoring unless passed as `--task-name`. |
 | `scores[].wall_elapsed_seconds` | Seconds since the research window began, recorded after artifact collection and both graders finish. |
 | `scores[].intermediate_score` | Public validation reward. Higher is better. Use the grader's reward, not a raw loss or error. |
-| `scores[].test_score` | Private grader reward for that same artifact. Used by `--plain`. |
+| `scores[].test_score` | Optional when raw metrics are supplied. For `--plain`, this must be the final benchmark reward for that same artifact. |
 | `scores[].test_raw_metric` | Private grader's `metric` from `/logs/verifier/metric.json`. Used for official scoring. |
 
-Default mode maps every row, including unselected rows. If `test_raw_metric`
-is missing, `test_score` must be 0, or `null` on a row that is never selected.
+Default mode needs a finite `test_raw_metric` for every row, including
+unselected rows. If it is missing, `test_score` must be 0, or `null` on a row
+that is never selected.
 
 Use a monotonic clock. Start it after environment and workspace setup, just
 before the first agent phase. Include agent work, artifact collection, public
@@ -61,23 +62,30 @@ and its iteration ID alongside your records so both scores can be traced to it.
 
 ## Compute AUARC
 
-From this repository's root, using Python 3.12 or newer:
+Compute AUARC on final benchmark rewards. The default command converts
+`test_raw_metric` automatically using `configuration.task_name`.
+Run it from this repository's root with Python 3.12 or newer:
 
 ```bash
 python3 scripts/compute_auarc.py scripts/custom_harness_summary.json
-python3 scripts/compute_auarc.py scripts/custom_harness_summary.json --plain
 ```
 
-The first command uses `reward_maps.json` to turn each private raw metric into
-the benchmark's difficulty-adjusted reward. Its final AUARC is
-approximately 0.467. The second uses `test_score` directly and returns `0.48`.
+This example returns a final AUARC of approximately 0.467. The script selects
+the correct map from `reward_maps.json`; your runner only needs to save the raw
+metrics and task name.
 Task grader rewards do not always use the final benchmark scale. For example,
 `budgeted-imputation-mcar50` gives about 0.333 for a raw R² of 0.15, while the
 benchmark map gives about 0.313.
 
-Use the default mode for raw task metrics. If `test_score` already contains the
-final benchmark reward, `--plain` computes AUARC without `reward_maps.json`.
-Never put an already mapped reward in `test_raw_metric`.
+Use `--plain` only if `test_score` already contains final benchmark rewards,
+not ordinary task grader rewards:
+
+```bash
+python3 scripts/compute_auarc.py path/to/summary.json --plain
+```
+
+This skips `reward_maps.json`. Never put an already mapped reward in
+`test_raw_metric`.
 
 AUARC is the time average of the private reward of the best public checkpoint
 so far. Report test performance, but select checkpoints solely by validation.

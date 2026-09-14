@@ -135,14 +135,15 @@ directory with these files:
 
 ## Compute AUARC
 
-Use the included script with a trial's `summary.json` file:
+Compute AUARC on final benchmark rewards. The default command converts saved
+raw test metrics automatically, using the task name in the summary:
 
 ```bash
 uv run python scripts/compute_auarc.py \
   jobs/<job>/<trial>/autoresearch/summary.json
 ```
 
-The script uses the saved task name. For an older or custom summary without one,
+For an older or custom summary without a saved task name,
 pass `--task-name` with that run's task directory name. To compute final
 hidden-test AUARC for every task under a jobs directory and their equal-weight
 mean:
