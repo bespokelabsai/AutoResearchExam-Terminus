@@ -1,12 +1,17 @@
 # AutoResearchExam Harness
 
-This package adds a timed research window to Harbor for the
-[AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam) tasks. One
+This is the official Terminus harness for
+[AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam).
+It adds a timed research window to Harbor. One
 agent session can submit many experiments during the window. The agent receives
 the public validation result and the remaining time after each submission. The
 private test result stays outside the agent environment.
 
 The harness supports local Docker and Modal.
+
+To use Claude Code, Codex, or another harness, follow the
+[custom harness guide](scripts/custom_harness.md). The AUARC script accepts
+timestamped scores from any harness.
 
 ## Install
 

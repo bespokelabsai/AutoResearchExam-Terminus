@@ -1,0 +1,87 @@
+# Use your own harness
+
+You can run [AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam)
+with Claude Code, Codex, or another agent harness. Export the scores below to use
+the existing AUARC script. You do not need a new scoring integration.
+
+## Run the task
+
+The [official Terminus harness](../README.md) provides the complete run loop.
+For another harness, implement this loop in your runner:
+
+1. Build the task's agent environment and give the agent `instruction.md`.
+   Preserve the task's data, resource limits, and artifact paths in `task.toml`.
+   Set the research budget before starting.
+2. Run your agent in that environment. At each submission, pause the agent and
+   save an immutable copy of the declared artifacts.
+3. Grade that copy with `tests/intermediate.sh`, then `tests/test.sh`, each in a
+   separate verifier environment built from the task's `tests/` directory.
+   Both graders must receive the same saved artifact.
+4. Record both results and the elapsed time after both graders finish. Return
+   only public validation feedback and remaining time to the agent, then resume
+   it until the budget or your declared experiment limit is reached.
+
+Keep private test code, data, scores, and logs outside the agent environment.
+Do not mount the full task checkout or results directory into it. Enforce this
+with environment and network access controls; a prompt asking the agent not to
+read tests is insufficient.
+
+Use the same task revision, resources, and research budget when comparing
+harnesses. Report the harness, model, and any additional stopping limits.
+
+## Save timestamped scores
+
+Write one JSON file per run. Start with
+[`custom_harness_summary.json`](custom_harness_summary.json), a synthetic
+100-second example. It works with both commands below.
+
+| Field | Value |
+| --- | --- |
+| `configuration.max_duration_seconds` | The full research budget in seconds, even if the agent stops early. |
+| `configuration.task_name` | The task directory name, required for official scoring unless passed as `--task-name`. |
+| `scores[].wall_elapsed_seconds` | Seconds since the research window began, recorded after artifact collection and both graders finish. |
+| `scores[].intermediate_score` | Public validation reward. Higher is better. Use the grader's reward, not a raw loss or error. |
+| `scores[].test_score` | Private grader reward for that same artifact. Used by `--plain`. |
+| `scores[].test_raw_metric` | Private grader's `metric` from `/logs/verifier/metric.json`. Used for official scoring. |
+
+Use a monotonic clock. Start it after environment and workspace setup, just
+before the first agent phase. Include agent work, artifact collection, public
+validation, private testing, and all overhead during the window. Do not use
+submission time or cumulative agent time as `wall_elapsed_seconds`.
+
+Keep rows in nondecreasing elapsed time, preserving submission order for equal
+timestamps. Save this JSON outside the agent environment. Retain each artifact
+and its iteration ID alongside your records so both scores can be traced to it.
+
+## Compute AUARC
+
+From this repository's root, using Python 3.12 or newer:
+
+```bash
+python3 scripts/compute_auarc.py scripts/custom_harness_summary.json
+python3 scripts/compute_auarc.py scripts/custom_harness_summary.json --plain
+```
+
+The first command uses `reward_maps.json` to turn each private raw metric into
+the benchmark's difficulty-adjusted reward. Its final AUARC is
+`0.4666666666666666`. The second uses `test_score` directly and returns `0.48`.
+Use the first mode for official benchmark scoring. `--plain` skips those maps.
+
+AUARC is the time average of the private reward of the best public checkpoint
+so far. Report test performance, but select checkpoints solely by validation.
+Keep test results hidden from the agent throughout the run and checkpoint
+selection. Never select by test score or take a running maximum of test scores.
+The reward starts at zero. A strictly higher public reward replaces the
+selected checkpoint; ties keep the earlier row. The selected private reward can
+decrease. Hold it until the next improvement or the full budget ends.
+
+Rows after the budget do not contribute. A row exactly at the deadline adds no
+area. Terminus can finish grading after the deadline and retain that row in its
+summary; do not move its timestamp earlier. The script requires at least one
+usable scored checkpoint at or before the deadline, otherwise it reports an
+error. Missing public scores do not select a checkpoint. A selected checkpoint
+needs a finite private score; do not invent one to suppress an error.
+
+For multiple runs, save files as `<run>/autoresearch/summary.json` under a common
+directory and run `python3 scripts/compute_auarc.py <directory> --all`. This
+averages runs within each task, then gives each included task equal weight.
