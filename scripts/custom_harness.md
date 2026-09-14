@@ -29,6 +29,8 @@ read tests is insufficient.
 
 Use the same task revision, resources, and research budget when comparing
 harnesses. Report the harness, model, and any additional stopping limits.
+For the 24-hour benchmark, keep `max_duration_seconds=86400` even if a run stops
+early. Record the actual runtime and stop reason separately.
 
 ## Save timestamped scores
 

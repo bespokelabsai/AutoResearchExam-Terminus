@@ -7,8 +7,8 @@ agent session can submit many experiments during the window. The agent receives
 the public validation result and the remaining time after each submission. The
 private test result stays outside the agent environment.
 
-The default research budget is 24 hours (86400 seconds). Use local Docker for
-the full window. Modal requires a shorter budget, as described below.
+The benchmark budget and AUARC horizon are 24 hours (86400 seconds) by default.
+The examples below use local Docker.
 
 To use Claude Code, Codex, or another harness, follow the
 [custom harness guide](scripts/custom_harness.md). The AUARC script accepts
@@ -53,10 +53,7 @@ uv run harbor run \
   --pk reasoning_effort=high
 ```
 
-Replace the task name and model with the ones you want to use. For this CPU
-decoder task on Modal, use `-e modal --pk max_duration_seconds=79200` instead of
-the Docker environment and 86400-second budget above. This gives 22 hours of
-research and leaves room within Modal's limit for final grading.
+Replace the task name and model with the ones you want to use.
 
 The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
 task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
@@ -112,15 +109,6 @@ The harness runs the private test for every accepted submission and records the
 private result, but it never sends the private score or private test output to
 the agent. The experiment with the highest public score is selected as the final
 score and uses the private score for that same experiment as the final reward.
-
-Local Docker supports the default 24-hour research window and up to 172800
-seconds. Modal limits a sandbox to 86400 seconds. The harness reserves two
-effective verifier timeouts plus 600 seconds for final artifact collection.
-On Modal, set `max_duration_seconds` to at most
-`86400 - 2 * verifier_timeout_seconds - 600`. For multiple tasks, use the largest
-effective verifier timeout. Overrides and timeout multipliers affect this value.
-The harness rejects a budget that does not fit; it does not silently shorten it.
-A full 24-hour research window is therefore unsupported on Modal.
 
 ## Results
 
