@@ -15,9 +15,11 @@ For another harness, implement this loop in your runner:
    (86400 seconds).
 2. Run your agent in that environment. At each submission, pause the agent and
    save an immutable copy of the declared artifacts.
-3. Grade that copy with `tests/intermediate.sh`, then `tests/test.sh`, each in a
-   separate verifier environment built from the task's `tests/` directory.
-   Both graders must receive the same saved artifact.
+3. Build a fresh verifier from the task's `tests/` directory for each grader.
+   Restore a copy of the saved artifacts at their declared paths in `task.toml`
+   (for example, `/app/output`) inside each verifier. Run `/tests/intermediate.sh`
+   for public validation, then `/tests/test.sh` in the other verifier for private
+   testing. Both graders must receive the same saved artifact.
 4. Record both results and the elapsed time after both graders finish. Return
    only public validation feedback and remaining time to the agent, then resume
    it until the budget or your declared experiment limit is reached.

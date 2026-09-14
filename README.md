@@ -18,8 +18,9 @@ timestamped scores from any harness.
 
 Install [uv](https://docs.astral.sh/uv/), start Docker, and configure your model
 provider's credentials (`OPENAI_API_KEY` for the OpenAI example below).
-Default Docker disk checks require 32000 MiB for retained artifacts plus the
-task's storage requirement on the jobs host, summed across all trials.
+Docker's default preflight checks for 32000 MiB of free space per trial for
+retained artifacts, plus that task's storage requirement, summed across all
+selected trials on the jobs host.
 Clone this repository and create its Python 3.12 environment:
 
 ```bash
@@ -61,7 +62,8 @@ Replace the task name and model with the ones you want to use.
 
 ## Run all tasks
 
-Remove the `-i` task filter to run every task in the Harbor Hub dataset:
+Remove the `-i` task filter to run every task in the Harbor Hub dataset.
+Check the [disk prerequisite](#install) for the full set of trials:
 
 ```bash
 uv run harbor run \
@@ -160,8 +162,10 @@ plugin setting is omitted.
 
 Add `--extra tinker` when using the Tinker LLM backend.
 
-For Modal, use a shorter run, such as 22 hours for this CPU example, to leave
-room before its [24-hour sandbox timeout](https://modal.com/docs/guide/sandboxes#timeouts).
+For a 22-hour Modal run of this CPU example, replace `-e docker` with
+`-e modal` and set `--pk max_duration_seconds=79200`. This also sets a 22-hour
+AUARC horizon and leaves room before its
+[24-hour sandbox timeout](https://modal.com/docs/guide/sandboxes#timeouts).
 
 The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
 task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
