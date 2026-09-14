@@ -105,6 +105,7 @@ async def test_default_plugin_creates_a_day_long_trial_with_repeated_experiments
         assert created.timed_window_config.max_duration_seconds == 86_400
         assert created.timed_window_config.max_iterations == 5_000
         assert created.agent.remaining_turns == 50_000
+        assert created.agent._reasoning_effort == "max"
         assert created.agent._output_token_budget is None
         assert created.task.config.verifier.timeout_sec == 600
     finally:
@@ -552,6 +553,7 @@ def test_plugin_defaults_iteration_minimum_to_zero() -> None:
     assert plugin.auto_summarization is True
     assert plugin.llm_backend is None
     assert plugin.max_turns == 50_000
+    assert plugin.reasoning_effort == "max"
     assert plugin.output_token_budget is None
     assert window.min_time_per_iteration == 0
     assert window.auto_summarize is True
@@ -1112,6 +1114,7 @@ async def test_plugin_timing_is_injected_before_factory_builds_the_trial(
     assert trial_config.agent.kwargs == {
         "min_time_per_iteration": 0,
         "max_turns": 50_000,
+        "reasoning_effort": "max",
         "auto_summarization": False,
     }
     await plugin.on_job_end(object())

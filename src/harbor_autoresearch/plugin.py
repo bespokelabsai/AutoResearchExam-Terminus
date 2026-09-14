@@ -56,7 +56,7 @@ class TimedWindowPlugin:
         max_duration_seconds: int = DEFAULT_MAX_DURATION_SECONDS,
         min_time_per_iteration: int | None = None,
         max_turns: int = 50_000,
-        reasoning_effort: str | None = None,
+        reasoning_effort: str | None = "max",
         output_token_budget: int | None = None,
         auto_summarization: bool = True,
         llm_backend: str | None = None,
