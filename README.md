@@ -16,8 +16,9 @@ timestamped scores from any harness.
 
 ## Install
 
-Clone this repository and create its environment with
-[uv](https://docs.astral.sh/uv/):
+Install [uv](https://docs.astral.sh/uv/), start Docker, and configure your model
+provider's credentials (`OPENAI_API_KEY` for the OpenAI example below).
+Clone this repository and create its Python 3.12 environment:
 
 ```bash
 git clone https://github.com/bespokelabsai/AutoResearchExam-Terminus.git
@@ -37,6 +38,9 @@ uv run harbor dataset download bespokelabs/autoresearch-exam@latest --cache
 ```
 
 ## Run one task
+
+`harbor run` starts the full research and grading loop. `trial.py` is its
+internal implementation.
 
 ```bash
 uv run harbor run \
@@ -133,13 +137,13 @@ Use the included script with a trial's `summary.json` file:
 
 ```bash
 uv run python scripts/compute_auarc.py \
-  jobs/<job>/<trial>/autoresearch/summary.json \
-  --task-name cpu-llm-decode-throughput
+  jobs/<job>/<trial>/autoresearch/summary.json
 ```
 
-Use the task's directory name for `--task-name`. New summaries save this name,
-so the option can then be omitted. To compute final hidden-test AUARC for every
-task under a jobs directory and their equal-weight mean:
+The script uses the saved task name. For an older or custom summary without one,
+pass `--task-name` with that run's task directory name. To compute final
+hidden-test AUARC for every task under a jobs directory and their equal-weight
+mean:
 
 ```bash
 uv run python scripts/compute_auarc.py jobs/<job> --all
