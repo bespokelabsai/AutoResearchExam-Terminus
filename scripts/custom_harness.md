@@ -47,6 +47,9 @@ Write one JSON file per run. Start with
 | `scores[].test_score` | Private grader reward for that same artifact. Used by `--plain`. |
 | `scores[].test_raw_metric` | Private grader's `metric` from `/logs/verifier/metric.json`. Used for official scoring. |
 
+Default mode maps every row, including unselected rows. If `test_raw_metric`
+is missing, `test_score` must be 0, or `null` on a row that is never selected.
+
 Use a monotonic clock. Start it after environment and workspace setup, just
 before the first agent phase. Include agent work, artifact collection, public
 validation, private testing, and all overhead during the window. Do not use

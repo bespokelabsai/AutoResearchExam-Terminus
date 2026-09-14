@@ -18,6 +18,8 @@ timestamped scores from any harness.
 
 Install [uv](https://docs.astral.sh/uv/), start Docker, and configure your model
 provider's credentials (`OPENAI_API_KEY` for the OpenAI example below).
+Default Docker disk checks require 32000 MiB for retained artifacts plus the
+task's storage requirement on the jobs host, summed across all trials.
 Clone this repository and create its Python 3.12 environment:
 
 ```bash
