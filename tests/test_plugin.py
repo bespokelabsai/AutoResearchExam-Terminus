@@ -86,6 +86,48 @@ def _valid_job(
 
 
 @pytest.mark.asyncio
+async def test_default_plugin_creates_a_day_long_trial_with_repeated_experiments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = _valid_job(tmp_path)
+    monkeypatch.setattr(
+        "harbor_autoresearch.plugin.EnvironmentFactory.run_preflight",
+        lambda **_: None,
+    )
+    monkeypatch.setattr(TimedWindowPlugin, "_validate_storage", lambda *args: None)
+    plugin = TimedWindowPlugin()
+    created = None
+
+    await plugin.on_job_start(job)
+    try:
+        created = await Trial.create(job._trial_configs[0])
+        assert created.timed_window_config.max_duration_seconds == 86_400
+        assert created.timed_window_config.max_iterations == 5_000
+        assert created.agent.remaining_turns == 50_000
+        assert created.agent._output_token_budget is None
+        assert created.task.config.verifier.timeout_sec == 600
+    finally:
+        if created is not None:
+            created._close_logger_handler()
+        await plugin.on_job_end(object())
+
+
+@pytest.mark.asyncio
+async def test_default_modal_budget_is_rejected_without_silently_shortening_it(
+    tmp_path: Path,
+) -> None:
+    job = _valid_job(tmp_path, backend=EnvironmentType.MODAL)
+    plugin = TimedWindowPlugin()
+
+    with pytest.raises(ValueError, match="required Modal sandbox lifetime.*86400"):
+        await plugin.on_job_start(job)
+
+    assert plugin.max_duration_seconds == 86_400
+    assert plugin.is_installed is False
+
+
+@pytest.mark.asyncio
 async def test_docker_gpu_task_uses_staged_agent_and_verifier_compose_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

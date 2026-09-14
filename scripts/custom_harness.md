@@ -11,7 +11,8 @@ For another harness, implement this loop in your runner:
 
 1. Build the task's agent environment and give the agent `instruction.md`.
    Preserve the task's data, resource limits, and artifact paths in `task.toml`.
-   Set the research budget before starting.
+   Set the research budget before starting; the official default is 24 hours
+   (86400 seconds).
 2. Run your agent in that environment. At each submission, pause the agent and
    save an immutable copy of the declared artifacts.
 3. Grade that copy with `tests/intermediate.sh`, then `tests/test.sh`, each in a

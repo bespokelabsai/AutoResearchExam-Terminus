@@ -7,7 +7,8 @@ agent session can submit many experiments during the window. The agent receives
 the public validation result and the remaining time after each submission. The
 private test result stays outside the agent environment.
 
-The harness supports local Docker and Modal.
+The default research budget is 24 hours (86400 seconds). Use local Docker for
+the full window. Modal requires a shorter budget, as described below.
 
 To use Claude Code, Codex, or another harness, follow the
 [custom harness guide](scripts/custom_harness.md). The AUARC script accepts
@@ -45,15 +46,17 @@ uv run harbor run \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
-  --pk max_iterations=500 \
+  --pk max_iterations=5000 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --pk max_turns=2000 \
+  --pk max_turns=50000 \
   --pk reasoning_effort=high
 ```
 
-Use `-e modal` to run the task on Modal. Replace the task name and model with the
-ones you want to use.
+Replace the task name and model with the ones you want to use. For this CPU
+decoder task on Modal, use `-e modal --pk max_duration_seconds=79200` instead of
+the Docker environment and 86400-second budget above. This gives 22 hours of
+research and leaves room within Modal's limit for final grading.
 
 The GPU tasks use one GPU, as set in `task.toml`. Docker runs use a temporary
 task copy with NVIDIA reservations (`docker-compose.yaml` to support local GPUs)
@@ -71,10 +74,10 @@ uv run harbor run \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
-  --pk max_iterations=500 \
+  --pk max_iterations=5000 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --pk max_turns=2000 \
+  --pk max_turns=50000 \
   --pk reasoning_effort=high
 ```
 
@@ -82,8 +85,8 @@ The harness settings are:
 
 | Setting | Meaning |
 | --- | --- |
-| `max_iterations` | Maximum number of submitted experiments. The allowed range is 1 to 5000. |
-| `max_duration_seconds` | Total research window in seconds. |
+| `max_iterations` | Maximum number of submitted experiments. The default is 5000. The allowed range is 1 to 5000. |
+| `max_duration_seconds` | Total research window in seconds. The default is 86400 (24 hours). |
 | `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
 | `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
 | `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
@@ -95,7 +98,9 @@ An agent-level `--ak llm_backend=tinker` setting is also preserved when the
 plugin setting is omitted.
 
 The total research window (`max_duration_seconds`) includes agent work, public
-validation, and private testing.
+validation, and private testing. The experiment or turn limit can end a run
+earlier. The default limits are 5000 experiments and 50000 turns, with no output
+token budget. Task build and grader timeouts are separate limits.
 
 After each submission, the agent receives:
 
@@ -108,10 +113,14 @@ private result, but it never sends the private score or private test output to
 the agent. The experiment with the highest public score is selected as the final
 score and uses the private score for that same experiment as the final reward.
 
-Local Docker can use a research window of up to 172800 seconds. Modal limits a
-sandbox to 86400 seconds. A Modal run must also leave enough time for artifact
-collection and the final public and private graders, so use a research window
-shorter than 86400 seconds.
+Local Docker supports the default 24-hour research window and up to 172800
+seconds. Modal limits a sandbox to 86400 seconds. The harness reserves two
+effective verifier timeouts plus 600 seconds for final artifact collection.
+On Modal, set `max_duration_seconds` to at most
+`86400 - 2 * verifier_timeout_seconds - 600`. For multiple tasks, use the largest
+effective verifier timeout. Overrides and timeout multipliers affect this value.
+The harness rejects a budget that does not fit; it does not silently shorten it.
+A full 24-hour research window is therefore unsupported on Modal.
 
 ## Results
 

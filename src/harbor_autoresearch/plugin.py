@@ -22,7 +22,12 @@ from harbor.publisher.packager import Packager
 from harbor.tasks.client import TaskDownloadResult
 from harbor.trial.trial import Trial
 
-from .config import TimedWindowConfig, validate_backend
+from .config import (
+    DEFAULT_MAX_DURATION_SECONDS,
+    DEFAULT_MAX_ITERATIONS,
+    TimedWindowConfig,
+    validate_backend,
+)
 from .docker_gpu import stage_docker_gpu_task
 
 _AGENT_NAME = "autoresearchexam-terminus"
@@ -47,8 +52,8 @@ class TimedWindowPlugin:
     def __init__(
         self,
         *,
-        max_iterations: int,
-        max_duration_seconds: int,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
+        max_duration_seconds: int = DEFAULT_MAX_DURATION_SECONDS,
         min_time_per_iteration: int | None = None,
         max_turns: int = 50_000,
         reasoning_effort: str | None = None,

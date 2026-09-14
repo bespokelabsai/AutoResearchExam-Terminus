@@ -5,13 +5,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+DEFAULT_MAX_ITERATIONS = 5_000
+DEFAULT_MAX_DURATION_SECONDS = 24 * 60 * 60
+
 
 @dataclass(frozen=True, slots=True)
 class TimedWindowConfig:
     """All timing policy supplied by the user for one run."""
 
-    max_iterations: int
-    max_duration_seconds: int
+    max_iterations: int = DEFAULT_MAX_ITERATIONS
+    max_duration_seconds: int = DEFAULT_MAX_DURATION_SECONDS
     min_time_per_iteration: int = 0
     auto_summarize: bool = True
 
