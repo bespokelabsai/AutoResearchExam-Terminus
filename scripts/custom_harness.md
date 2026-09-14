@@ -44,7 +44,7 @@ Write one JSON file per run. Start with
 | `configuration.task_name` | The task directory name, required for official scoring unless passed as `--task-name`. |
 | `scores[].wall_elapsed_seconds` | Seconds since the research window began, recorded after artifact collection and both graders finish. |
 | `scores[].intermediate_score` | Public validation reward. Higher is better. Use the grader's reward, not a raw loss or error. |
-| `scores[].test_score` | Optional when raw metrics are supplied. For `--plain`, this must be the final benchmark reward for that same artifact. |
+| `scores[].test_score` | Optional private grader reward. Needed only for rows without a raw metric, as described below. |
 | `scores[].test_raw_metric` | Private grader's `metric` from `/logs/verifier/metric.json`. Used for official scoring. |
 
 Default mode needs a finite `test_raw_metric` for every row, including
@@ -70,22 +70,9 @@ Run it from this repository's root with Python 3.12 or newer:
 python3 scripts/compute_auarc.py scripts/custom_harness_summary.json
 ```
 
-This example returns a final AUARC of approximately 0.467. The script selects
-the correct map from `reward_maps.json`; your runner only needs to save the raw
-metrics and task name.
-Task grader rewards do not always use the final benchmark scale. For example,
-`budgeted-imputation-mcar50` gives about 0.333 for a raw R² of 0.15, while the
-benchmark map gives about 0.313.
-
-Use `--plain` only if `test_score` already contains final benchmark rewards,
-not ordinary task grader rewards:
-
-```bash
-python3 scripts/compute_auarc.py path/to/summary.json --plain
-```
-
-This skips `reward_maps.json`. Never put an already mapped reward in
-`test_raw_metric`.
+This example returns a final AUARC of approximately 0.467. Your runner supplies
+the JSON; the script handles reward conversion, checkpoint selection, and AUARC.
+Always put the raw metric in `test_raw_metric`, never an already mapped reward.
 
 AUARC is the time average of the private reward of the best public checkpoint
 so far. Report test performance, but select checkpoints solely by validation.
