@@ -1,6 +1,6 @@
 # AutoResearchExam Harness
 
-This is the official Terminus harness for
+Our official Terminus harness for
 [AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam).
 It adds a timed research window to Harbor. One
 agent session can submit many experiments during the window. The agent receives
