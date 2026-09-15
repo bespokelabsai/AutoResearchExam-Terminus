@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-DEFAULT_MAX_ITERATIONS = 5_000
+DEFAULT_MAX_ITERATIONS = 1_000
 DEFAULT_MAX_DURATION_SECONDS = 24 * 60 * 60
+DEFAULT_MAX_TURNS = 10_000
+DEFAULT_MAX_TOKENS = 32_000
 
 
 @dataclass(frozen=True, slots=True)

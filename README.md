@@ -51,10 +51,11 @@ uv run harbor run \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
-  --pk max_iterations=5000 \
+  --pk max_iterations=1000 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --pk max_turns=50000 \
+  --pk max_turns=10000 \
+  --pk max_tokens=32000 \
   --pk reasoning_effort=max
 ```
 
@@ -72,17 +73,20 @@ uv run harbor run \
   -m openai/gpt-5.6-sol \
   -e docker \
   --plugin autoresearch-exam \
-  --pk max_iterations=5000 \
+  --pk max_iterations=1000 \
   --pk max_duration_seconds=86400 \
   --pk min_time_per_iteration=0 \
-  --pk max_turns=50000 \
+  --pk max_turns=10000 \
+  --pk max_tokens=32000 \
   --pk reasoning_effort=max
 ```
 
 The total research window (`max_duration_seconds`) includes agent work, public
 validation, and private testing. The experiment or turn limit can end a run
-earlier. The default limits are 5000 experiments and 50000 turns, with no output
-token budget. Task build and grader timeouts are separate limits.
+earlier. These examples use the default benchmark settings: 1000 experiments,
+10000 model turns, 24 hours, 32000 tokens per response, and `max` reasoning
+effort, matching our Sol and Astra runs. There is no session-wide output token
+budget. Task build and grader timeouts are separate limits.
 
 After each submission, the agent receives:
 
@@ -148,12 +152,13 @@ The harness settings are:
 
 | Setting | Meaning |
 | --- | --- |
-| `max_iterations` | Maximum number of submitted experiments. The default is 5000. The allowed range is 1 to 5000. |
+| `max_iterations` | Maximum number of submitted experiments. The default is 1000. The allowed range is 1 to 5000. |
 | `max_duration_seconds` | Total research window in seconds. The default is 86400 (24 hours). |
 | `min_time_per_iteration` | Minimum agent work time before each submission, in minutes. The default is 0, which permits an immediate submission. |
 | `llm_backend` | LLM backend used by Terminus 2. The default is `litellm`; the alternative is `tinker`. |
-| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 50000. |
+| `max_turns` | Maximum model turns shared by the full agent session. The allowed range is 1 to 50000. The default is 10000. |
 | `reasoning_effort` | Reasoning effort sent to the model provider. The default is `max`, as used for Sol and Astra in our benchmark runs. The provider must support the selected value. |
+| `max_tokens` | Maximum tokens per model response. The default is 32000, as used in our benchmark runs. |
 | `output_token_budget` | Maximum output tokens shared by the full agent session. The default is `None`, which means there is no limit. |
 | `auto_summarization` | Whether to summarize the session between experiments. The default is `true`. |
 

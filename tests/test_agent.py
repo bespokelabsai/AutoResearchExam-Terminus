@@ -565,3 +565,55 @@ async def test_dead_session_refuses_resume_without_charging_a_turn(
 
     assert agent.total_turns_used == 4
     assert agent.current_iteration_turns_used == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_responses_api", [False, True])
+@pytest.mark.parametrize("max_tokens", [32_000, 8_000])
+async def test_response_limit_reaches_provider_request(
+    tmp_path, monkeypatch, use_responses_api, max_tokens
+) -> None:
+    import litellm
+
+    class RequestCaptured(BaseException):
+        pass
+
+    request = AsyncMock(side_effect=RequestCaptured)
+    monkeypatch.setattr(
+        litellm, "aresponses" if use_responses_api else "acompletion", request
+    )
+    agent = AutoResearchExamAgent(
+        logs_dir=tmp_path,
+        model_name="openai/gpt-4o",
+        use_responses_api=use_responses_api,
+        max_tokens=max_tokens,
+    )
+    with pytest.raises(RequestCaptured):
+        await agent._llm.call(prompt="test", **agent._llm_call_kwargs)
+    token_key = "max_output_tokens" if use_responses_api else "max_tokens"
+    assert request.call_args.kwargs[token_key] == max_tokens
+
+
+def test_tinker_receives_response_limit_at_construction(monkeypatch) -> None:
+    received = {}
+
+    def capture_init(self, *args, **kwargs):
+        received.update(kwargs)
+        _fake_base_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(agent_module.Terminus2, "__init__", capture_init)
+    AutoResearchExamAgent(
+        logs_dir=Path("logs"),
+        model_name="provider/model",
+        llm_backend="tinker",
+        llm_kwargs={"temperature": 0.5},
+    )
+    assert received["llm_kwargs"] == {"temperature": 0.5, "max_tokens": 32_000}
+
+
+def test_truncation_accounts_for_the_configured_response_limit() -> None:
+    model = SimpleNamespace(get_model_output_limit=lambda: 128_000)
+    meter = agent_module._OutputTokenMeter(model, max_tokens=32_000)
+    assert (
+        meter._truncated_output_tokens(OutputLengthExceededError("truncated")) == 32_000
+    )
