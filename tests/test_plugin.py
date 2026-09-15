@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -86,9 +87,11 @@ def _valid_job(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("example_index", [None, 0, 1])
 async def test_default_plugin_creates_a_day_long_trial_with_repeated_experiments(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    example_index: int | None,
 ) -> None:
     job = _valid_job(tmp_path)
     monkeypatch.setattr(
@@ -96,16 +99,37 @@ async def test_default_plugin_creates_a_day_long_trial_with_repeated_experiments
         lambda **_: None,
     )
     monkeypatch.setattr(TimedWindowPlugin, "_validate_storage", lambda *args: None)
-    plugin = TimedWindowPlugin()
+    plugin_kwargs = {}
+    if example_index is not None:
+        readme = (Path(__file__).parents[1] / "README.md").read_text()
+        examples = [
+            block
+            for block in re.findall(r"```bash\n(.*?)```", readme, re.S)
+            if block.startswith("uv run harbor run")
+        ]
+        plugin_kwargs = {
+            key: int(value) if value.isdigit() else value
+            for key, value in re.findall(r"--pk (\w+)=(\S+)", examples[example_index])
+        }
+        assert plugin_kwargs == {
+            "max_iterations": 1_000,
+            "max_duration_seconds": 86_400,
+            "min_time_per_iteration": 0,
+            "max_turns": 10_000,
+            "max_tokens": 32_000,
+            "reasoning_effort": "max",
+        }
+    plugin = TimedWindowPlugin(**plugin_kwargs)
     created = None
 
     await plugin.on_job_start(job)
     try:
         created = await Trial.create(job._trial_configs[0])
         assert created.timed_window_config.max_duration_seconds == 86_400
-        assert created.timed_window_config.max_iterations == 5_000
-        assert created.agent.remaining_turns == 50_000
+        assert created.timed_window_config.max_iterations == 1_000
+        assert created.agent.remaining_turns == 10_000
         assert created.agent._reasoning_effort == "max"
+        assert created.agent._llm_call_kwargs["max_tokens"] == 32_000
         assert created.agent._output_token_budget is None
         assert created.task.config.verifier.timeout_sec == 600
     finally:
@@ -552,11 +576,24 @@ def test_plugin_defaults_iteration_minimum_to_zero() -> None:
 
     assert plugin.auto_summarization is True
     assert plugin.llm_backend is None
-    assert plugin.max_turns == 50_000
+    assert plugin.max_turns == 10_000
+    assert plugin.max_tokens == 32_000
     assert plugin.reasoning_effort == "max"
     assert plugin.output_token_budget is None
     assert window.min_time_per_iteration == 0
     assert window.auto_summarize is True
+
+
+@pytest.mark.parametrize("value", [None, True, 1.5, "32000"])
+def test_plugin_rejects_noninteger_response_limits(value: object) -> None:
+    with pytest.raises(TypeError, match="max_tokens must be an integer"):
+        TimedWindowPlugin(max_tokens=value)
+
+
+@pytest.mark.parametrize("value", [0, -1])
+def test_plugin_rejects_nonpositive_response_limits(value: int) -> None:
+    with pytest.raises(ValueError, match="max_tokens must be positive"):
+        TimedWindowPlugin(max_tokens=value)
 
 
 @pytest.mark.asyncio
@@ -579,7 +616,7 @@ async def test_plugin_accepts_and_preserves_the_public_agent_name(
         assert agent.name == "autoresearchexam-terminus"
         assert agent.import_path == ("harbor_autoresearch.agent:AutoResearchExamAgent")
         assert "llm_backend" not in agent.kwargs
-        assert agent.kwargs["max_turns"] == 50_000
+        assert agent.kwargs["max_turns"] == 10_000
         assert agent.kwargs["auto_summarization"] is True
     finally:
         await plugin.on_job_end(object())
@@ -602,6 +639,7 @@ async def test_plugin_forwards_all_public_agent_settings(
         max_iterations=2,
         max_duration_seconds=120,
         max_turns=2_000,
+        max_tokens=8_000,
         reasoning_effort="high",
         output_token_budget=12_345,
         auto_summarization=False,
@@ -614,6 +652,7 @@ async def test_plugin_forwards_all_public_agent_settings(
             "llm_backend": "tinker",
             "min_time_per_iteration": 0,
             "max_turns": 2_000,
+            "max_tokens": 8_000,
             "reasoning_effort": "high",
             "output_token_budget": 12_345,
             "auto_summarization": False,
@@ -1113,7 +1152,8 @@ async def test_plugin_timing_is_injected_before_factory_builds_the_trial(
     assert result.window.auto_summarize is False
     assert trial_config.agent.kwargs == {
         "min_time_per_iteration": 0,
-        "max_turns": 50_000,
+        "max_turns": 10_000,
+        "max_tokens": 32_000,
         "reasoning_effort": "max",
         "auto_summarization": False,
     }

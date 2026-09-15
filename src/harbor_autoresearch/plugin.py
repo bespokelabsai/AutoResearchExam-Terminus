@@ -25,6 +25,8 @@ from harbor.trial.trial import Trial
 from .config import (
     DEFAULT_MAX_DURATION_SECONDS,
     DEFAULT_MAX_ITERATIONS,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_MAX_TURNS,
     TimedWindowConfig,
     validate_backend,
 )
@@ -55,7 +57,8 @@ class TimedWindowPlugin:
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         max_duration_seconds: int = DEFAULT_MAX_DURATION_SECONDS,
         min_time_per_iteration: int | None = None,
-        max_turns: int = 50_000,
+        max_turns: int = DEFAULT_MAX_TURNS,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         reasoning_effort: str | None = "max",
         output_token_budget: int | None = None,
         auto_summarization: bool = True,
@@ -69,6 +72,11 @@ class TimedWindowPlugin:
         if not 1 <= max_turns <= 50_000:
             raise ValueError("max_turns must be between 1 and 50000")
         self.max_turns = max_turns
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+            raise TypeError("max_tokens must be an integer")
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
+        self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
         self.output_token_budget = output_token_budget
         self.auto_summarization = auto_summarization
@@ -360,6 +368,7 @@ class TimedWindowPlugin:
             "llm_backend": self.llm_backend,
             "min_time_per_iteration": self.min_time_per_iteration,
             "max_turns": self.max_turns,
+            "max_tokens": self.max_tokens,
             "reasoning_effort": self.reasoning_effort,
             "output_token_budget": self.output_token_budget,
             "auto_summarization": self.auto_summarization,

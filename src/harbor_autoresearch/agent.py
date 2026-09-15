@@ -14,6 +14,7 @@ from harbor.llms.base import OutputLengthExceededError
 from harbor.models.agent.context import AgentContext
 from harbor.models.trajectories import Step
 
+from .config import DEFAULT_MAX_TOKENS
 from .protocol import extract_submission_summary
 
 DEFAULT_AUTO_SUMMARIZATION = True
@@ -26,8 +27,9 @@ class _SharedBudgetStop(BaseException):
 class _OutputTokenMeter:
     """Count every model response, including calls Harbor does not aggregate."""
 
-    def __init__(self, model: Any) -> None:
+    def __init__(self, model: Any, max_tokens: int | None = None) -> None:
         self._model = model
+        self._max_tokens = max_tokens
         self.total_output_tokens = 0
 
     def __getattr__(self, name: str) -> Any:
@@ -50,10 +52,12 @@ class _OutputTokenMeter:
         try:
             limit = self._model.get_model_output_limit()
             if limit is not None and int(limit) > 0:
-                return int(limit)
+                return min(int(limit), self._max_tokens or int(limit))
         except (AttributeError, TypeError, ValueError):
             pass
 
+        if self._max_tokens is not None:
+            return self._max_tokens
         truncated = str(getattr(exc, "truncated_response", "") or "")
         return max(len(truncated), 1)
 
@@ -110,11 +114,33 @@ class AutoResearchExamAgent(Terminus2):
         self,
         *args: Any,
         min_time_per_iteration: int = 0,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         output_token_budget: int | None = None,
         auto_summarization: bool | str = DEFAULT_AUTO_SUMMARIZATION,
         **kwargs: Any,
     ) -> None:
         minimum = _nonnegative_integer(min_time_per_iteration, "min_time_per_iteration")
+        response_limit = _optional_positive_integer(max_tokens, "max_tokens")
+        if response_limit is None:
+            raise ValueError("max_tokens must be a positive integer")
+
+        # Tinker takes its response limit at construction. LiteLLM accepts it
+        # on each call, with a different key for the Responses API.
+        backend = kwargs.get("llm_backend", "litellm")
+        backend = getattr(backend, "value", backend)
+        if backend == "tinker":
+            settings_key, token_key = "llm_kwargs", "max_tokens"
+        else:
+            settings_key = "llm_call_kwargs"
+            token_key = (
+                "max_output_tokens" if kwargs.get("use_responses_api") else "max_tokens"
+            )
+        settings = dict(kwargs.get(settings_key) or {})
+        existing_limit = settings.get(token_key)
+        if existing_limit is not None and existing_limit != response_limit:
+            raise ValueError(f"Conflicting max_tokens and {settings_key}.{token_key}")
+        settings[token_key] = response_limit
+        kwargs[settings_key] = settings
 
         self.auto_summarization = _boolean(auto_summarization, "auto_summarization")
         self._output_token_budget = _optional_positive_integer(
@@ -125,7 +151,7 @@ class AutoResearchExamAgent(Terminus2):
 
         self._output_meter: _OutputTokenMeter | None = None
         if hasattr(self, "_llm"):
-            self._output_meter = _OutputTokenMeter(self._llm)
+            self._output_meter = _OutputTokenMeter(self._llm, response_limit)
             self._llm = self._output_meter
 
         self.min_time_per_iteration = minimum

@@ -5,7 +5,7 @@ from harbor_autoresearch.config import TimedWindowConfig, validate_backend
 
 def test_default_budget_survives_an_iteration_limit_override() -> None:
     assert TimedWindowConfig().max_duration_seconds == 86_400
-    assert TimedWindowConfig().max_iterations == 5_000
+    assert TimedWindowConfig().max_iterations == 1_000
     assert TimedWindowConfig(max_iterations=2).as_dict() == {
         "max_iterations": 2,
         "max_duration_seconds": 86_400,
