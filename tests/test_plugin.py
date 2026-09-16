@@ -128,7 +128,10 @@ async def test_default_plugin_creates_a_day_long_trial_with_repeated_experiments
         assert created.timed_window_config.max_duration_seconds == 86_400
         assert created.timed_window_config.max_iterations == 1_000
         assert created.agent.remaining_turns == 10_000
-        assert created.agent._reasoning_effort == "max"
+        assert (
+            getattr(created.agent, "_reasoning_effort", None)
+            or created.agent.options.reasoning_effort
+        ) == "max"
         assert created.agent._llm_call_kwargs["max_tokens"] == 32_000
         assert created.agent._output_token_budget is None
         assert created.task.config.verifier.timeout_sec == 600
@@ -190,7 +193,7 @@ async def test_docker_gpu_task_uses_staged_agent_and_verifier_compose_files(
                     "capabilities": ["gpu"],
                 }
             ]
-        assert created.task.paths.task_dir == staged_path
+        assert created.task.paths.task_dir.resolve() == staged_path.resolve()
         assert created.task.config.environment.gpus == 0
     finally:
         if created is not None:
