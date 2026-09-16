@@ -17,13 +17,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "harbor>=0.22.0,<0.23.0",
+    "harbor>=0.22.0,<0.24.0",
     "pyyaml>=6,<7",
 ]
 
 [project.optional-dependencies]
-modal = ["harbor[modal]>=0.22.0,<0.23.0"]
-tinker = ["harbor[tinker]>=0.22.0,<0.23.0"]
+modal = ["harbor[modal]>=0.22.0,<0.24.0"]
+tinker = ["harbor[tinker]>=0.22.0,<0.24.0"]
 dev = [
     "build>=1.2,<2",
     "pytest>=9.0.3,<10",
