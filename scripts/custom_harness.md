@@ -1,6 +1,6 @@
 # Use your own harness
 
-You can run [AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam)
+You can run [AutoResearchExam v1.0](https://github.com/bespokelabsai/AutoResearchExam/tree/v1.0)
 with Claude Code, Codex, or another agent harness. Export the scores below to use
 the existing AUARC script. You do not need a new scoring integration.
 

@@ -1,7 +1,7 @@
 # AutoResearchExam Harness
 
 Our official Terminus harness for
-[AutoResearchExam](https://github.com/bespokelabsai/AutoResearchExam).
+[AutoResearchExam v1.0](https://github.com/bespokelabsai/AutoResearchExam/tree/v1.0).
 It adds a timed research window to Harbor. One
 agent session can submit many experiments during the window. The agent receives
 the public validation result and the remaining time after each submission. The
@@ -35,7 +35,7 @@ The dataset is public on Harbor Hub. Harbor downloads and caches each selected
 task when a run starts. To download the full dataset into Harbor's cache first:
 
 ```bash
-uv run harbor dataset download bespokelabs/autoresearch-exam@latest --cache
+uv run harbor dataset download bespokelabs/autoresearch-exam@1.0.5 --cache
 ```
 
 ## Run one task
@@ -45,7 +45,7 @@ internal implementation.
 
 ```bash
 uv run harbor run \
-  -d bespokelabs/autoresearch-exam \
+  -d bespokelabs/autoresearch-exam@1.0.5 \
   -i bespokelabs/cpu-decoder-graph-executor \
   -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
@@ -68,7 +68,7 @@ Check the [disk prerequisite](#install) for the full set of trials:
 
 ```bash
 uv run harbor run \
-  -d bespokelabs/autoresearch-exam \
+  -d bespokelabs/autoresearch-exam@1.0.5 \
   -a autoresearchexam-terminus \
   -m openai/gpt-5.6-sol \
   -e docker \
