@@ -7,6 +7,11 @@ agent session can submit many experiments during the window. The agent receives
 the public validation result and the remaining time after each submission. The
 private test result stays outside the agent environment.
 
+Run this harness with the v1.0 tasks (`bespokelabs/autoresearch-exam@1.0.5` on
+Harbor Hub), as the commands below do. This is how leaderboard scores are produced.
+To run the tasks with your own harness on Harbor main, use
+[AutoResearchExam v1.1](https://github.com/bespokelabsai/AutoResearchExam/releases/tag/v1.1).
+
 The benchmark budget and AUARC horizon are 24 hours (86400 seconds) by default.
 The examples below use local Docker.
 

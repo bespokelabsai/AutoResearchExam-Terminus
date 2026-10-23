@@ -4,6 +4,10 @@ You can run [AutoResearchExam v1.0](https://github.com/bespokelabsai/AutoResearc
 with Claude Code, Codex, or another agent harness. Export the scores below to use
 the existing AUARC script. You do not need a new scoring integration.
 
+[AutoResearchExam v1.1](https://github.com/bespokelabsai/AutoResearchExam/releases/tag/v1.1)
+already runs on Harbor main with any agent harness, so you do not need to build this loop
+yourself. Use this guide to build your own loop on the v1.0 tasks.
+
 ## Run the task
 
 The [official Terminus harness](../README.md) provides the complete run loop.
